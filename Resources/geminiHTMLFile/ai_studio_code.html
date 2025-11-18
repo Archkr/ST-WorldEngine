@@ -48,6 +48,12 @@
         const objects = [];
         let raycaster;
 
+        const DEFAULT_CHAT_MESSAGE = "Welcome to the Park!";
+        const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
+        let chatMaterial;
+        let chatSprite;
+        let pendingAssistantMessage = DEFAULT_CHAT_MESSAGE;
+
         // Movement variables
         let moveForward = false;
         let moveBackward = false;
@@ -56,6 +62,14 @@
         let prevTime = performance.now();
         const velocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
+
+        window.WorldEngine = window.WorldEngine || {};
+        window.WorldEngine.receiveAssistantMessage = updateChatMessage;
+
+        window.addEventListener(ASSISTANT_MESSAGE_EVENT, (event) => {
+            const incoming = event?.detail?.message ?? event?.detail ?? '';
+            updateChatMessage(incoming);
+        });
 
         init();
         animate();
@@ -172,13 +186,14 @@
 
             // 8. The Chat Box (Always faces camera)
             // We generate a texture from an HTML Canvas dynamically
-            const chatTexture = createTextTexture("Welcome to the Park!");
-            const chatMaterial = new THREE.SpriteMaterial({ map: chatTexture });
-            const chatSprite = new THREE.Sprite(chatMaterial);
-            
+            chatMaterial = new THREE.SpriteMaterial();
+            chatSprite = new THREE.Sprite(chatMaterial);
+
             chatSprite.position.set(0, 4.5, 0); // Above the player sprite
             chatSprite.scale.set(4, 2, 1); // Aspect ratio of the canvas
             scene.add(chatSprite);
+
+            updateChatMessage(pendingAssistantMessage);
 
 
             // 9. Renderer Setup
@@ -202,13 +217,77 @@
             roundRect(ctx, 10, 50, 490, 150, 20, true);
 
             // Text style
-            ctx.font = "Bold 40px Arial";
+            ctx.font = "Bold 32px Arial";
             ctx.fillStyle = "black";
             ctx.textAlign = "center";
-            ctx.fillText(message, 256, 140);
+
+            const maxWidth = 470;
+            const maxLines = 3;
+            const textLines = wrapAndClampText(ctx, message || DEFAULT_CHAT_MESSAGE, maxWidth, maxLines);
+            const lineHeight = 42;
+            const textAreaHeight = 150;
+            const startY = 50 + (textAreaHeight - (lineHeight * textLines.length)) / 2 + lineHeight / 2;
+
+            textLines.forEach((line, index) => {
+                ctx.fillText(line, 256, startY + index * lineHeight);
+            });
 
             const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
             return texture;
+        }
+
+        function wrapAndClampText(ctx, message, maxWidth, maxLines) {
+            const words = message.split(/\s+/).filter(Boolean);
+            if (!words.length) return [''];
+
+            const lines = [];
+            let currentLine = '';
+
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+                if (ctx.measureText(nextLine).width <= maxWidth) {
+                    currentLine = nextLine;
+                    continue;
+                }
+
+                if (lines.length === maxLines - 1) {
+                    const remaining = [currentLine, ...words.slice(i)].filter(Boolean).join(' ');
+                    lines.push(clampLine(ctx, remaining, maxWidth));
+                    return lines;
+                }
+
+                if (currentLine) {
+                    lines.push(currentLine);
+                } else {
+                    lines.push(clampLine(ctx, word, maxWidth));
+                }
+
+                currentLine = '';
+            }
+
+            if (lines.length === maxLines) {
+                return lines;
+            }
+
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines.slice(0, maxLines);
+        }
+
+        function clampLine(ctx, text, maxWidth) {
+            let clamped = text;
+            const ellipsis = '…';
+
+            while (ctx.measureText(clamped + ellipsis).width > maxWidth && clamped.length > 0) {
+                clamped = clamped.slice(0, -1);
+            }
+
+            return clamped.length < text.length ? clamped + ellipsis : clamped;
         }
 
         // Canvas drawing helper
@@ -231,6 +310,18 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updateChatMessage(message) {
+            pendingAssistantMessage = message || DEFAULT_CHAT_MESSAGE;
+            if (!chatMaterial) return;
+
+            if (chatMaterial.map) {
+                chatMaterial.map.dispose();
+            }
+
+            chatMaterial.map = createTextTexture(pendingAssistantMessage);
+            chatMaterial.needsUpdate = true;
         }
 
         function animate() {
