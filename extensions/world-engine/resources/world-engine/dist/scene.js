@@ -1,5 +1,13 @@
 import { ExpressionTextureClient } from './expression-listener.js';
 
+const DEFAULT_CHAT_TEXT = 'Welcome to the Park!';
+
+const runtimeSettings = {
+    movementSpeed: 1.0,
+    invertLook: false,
+    showInstructions: true,
+};
+
 const state = {
     position: { x: 0, y: 1.6, z: 10 },
     yaw: Math.PI,
@@ -10,6 +18,7 @@ const state = {
     moveRight: false,
     velocity: { x: 0, z: 0 },
     lastTime: performance.now(),
+    chatText: DEFAULT_CHAT_TEXT,
 };
 
 const config = {
@@ -20,8 +29,8 @@ const config = {
 };
 
 const projection = {
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: 1,
+    height: 1,
 };
 
 const canvas = document.createElement('canvas');
@@ -33,11 +42,70 @@ const world = {
     trees: [],
 };
 
-function resizeRenderer() {
-    projection.width = window.innerWidth;
-    projection.height = window.innerHeight;
+function resizeRenderer(width, height) {
+    const nextWidth = Math.max(1, Math.floor(width ?? window.innerWidth));
+    const nextHeight = Math.max(1, Math.floor(height ?? window.innerHeight));
+    projection.width = nextWidth;
+    projection.height = nextHeight;
     canvas.width = projection.width;
     canvas.height = projection.height;
+}
+
+function getContainerSize() {
+    return {
+        width: document.body.clientWidth || window.innerWidth,
+        height: document.body.clientHeight || window.innerHeight,
+    };
+}
+
+function applySettings(newSettings = {}) {
+    runtimeSettings.movementSpeed = Math.max(0.1, Number(newSettings.movementSpeed ?? runtimeSettings.movementSpeed));
+    runtimeSettings.invertLook = Boolean(newSettings.invertLook ?? runtimeSettings.invertLook);
+    runtimeSettings.showInstructions = Boolean(newSettings.showInstructions ?? runtimeSettings.showInstructions);
+    updateInstructionsVisibility();
+}
+
+function parseSettingsFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const moveSpeed = Number(params.get('moveSpeed'));
+    const invertLook = params.get('invertLook');
+    const showInstructions = params.get('showInstructions');
+
+    applySettings({
+        movementSpeed: Number.isFinite(moveSpeed) ? moveSpeed : undefined,
+        invertLook: invertLook === null ? undefined : invertLook === 'true',
+        showInstructions: showInstructions === null ? undefined : showInstructions === 'true',
+    });
+}
+
+function updateInstructionsVisibility() {
+    const instructions = document.getElementById('instructions');
+    if (!instructions) return;
+
+    if (!runtimeSettings.showInstructions) {
+        instructions.style.display = 'none';
+        return;
+    }
+
+    const locked = document.pointerLockElement === canvas;
+    instructions.style.display = locked ? 'none' : 'block';
+}
+
+function updateChatMessage(text) {
+    state.chatText = text ? String(text) : DEFAULT_CHAT_TEXT;
+}
+
+function handleIncomingMessage(event) {
+    const { data } = event;
+    if (!data || data.source !== 'world-engine') return;
+
+    if (data.type === 'world-engine-settings') {
+        applySettings(data.payload || {});
+    }
+
+    if (data.type === 'world-engine-chat') {
+        updateChatMessage(data.payload?.text);
+    }
 }
 
 function clamp(value, min, max) {
@@ -83,34 +151,48 @@ function setupPointerLock() {
     const instructions = document.getElementById('instructions');
     const lockTarget = canvas;
 
-    const onLockChange = () => {
-        const locked = document.pointerLockElement === lockTarget;
-        instructions.style.display = locked ? 'none' : 'block';
+    const requestLock = () => {
+        if (document.pointerLockElement !== lockTarget) {
+            lockTarget.requestPointerLock();
+        }
     };
 
-    instructions.addEventListener('click', () => {
-        lockTarget.requestPointerLock();
-    });
+    instructions?.addEventListener('click', requestLock);
+    canvas.addEventListener('click', requestLock);
 
-    document.addEventListener('pointerlockchange', onLockChange);
+    document.addEventListener('pointerlockchange', updateInstructionsVisibility);
     document.addEventListener('mousemove', (event) => {
         if (document.pointerLockElement !== lockTarget) return;
         const lookSpeed = 0.0025;
         state.yaw -= event.movementX * lookSpeed;
-        state.pitch -= event.movementY * lookSpeed;
+        state.pitch -= event.movementY * lookSpeed * (runtimeSettings.invertLook ? -1 : 1);
         state.pitch = clamp(state.pitch, -config.maxPitch, config.maxPitch);
     });
+
+    updateInstructionsVisibility();
 }
 
 function setupEvents() {
     document.addEventListener('keydown', (event) => handleKey(event, true));
     document.addEventListener('keyup', (event) => handleKey(event, false));
-    window.addEventListener('resize', resizeRenderer);
+    window.addEventListener('resize', () => {
+        const size = getContainerSize();
+        resizeRenderer(size.width, size.height);
+    });
+    window.addEventListener('message', handleIncomingMessage);
+
+    const resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry?.contentRect) {
+            resizeRenderer(entry.contentRect.width, entry.contentRect.height);
+        }
+    });
+    resizeObserver.observe(document.body);
 }
 
 function update(delta) {
     const damping = 10.0;
-    const acceleration = 100.0;
+    const acceleration = 100.0 * runtimeSettings.movementSpeed;
 
     state.velocity.x -= state.velocity.x * damping * delta;
     state.velocity.z -= state.velocity.z * damping * delta;
@@ -275,7 +357,7 @@ function drawChatBubble() {
     ctx.font = `${Math.max(14, 24 * projected.scale)}px Inter, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Welcome to the Park!', projected.x, projected.y);
+    ctx.fillText(state.chatText, projected.x, projected.y);
 }
 
 function drawTree(tree) {
@@ -335,7 +417,9 @@ function animate() {
 }
 
 function init() {
-    resizeRenderer();
+    parseSettingsFromQuery();
+    const size = getContainerSize();
+    resizeRenderer(size.width, size.height);
     buildPark();
     setupPointerLock();
     setupEvents();
@@ -344,5 +428,7 @@ function init() {
 
 window.WorldEngine = window.WorldEngine || {};
 window.WorldEngine.ExpressionTextureClient = ExpressionTextureClient;
+window.WorldEngine.updateChatMessage = updateChatMessage;
+window.WorldEngine.applySettings = applySettings;
 
 init();

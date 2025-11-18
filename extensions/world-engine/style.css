@@ -33,6 +33,48 @@
     justify-content: space-between;
 }
 
+.world-engine-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border_color, #ccc);
+    border-radius: 8px;
+    background: var(--white_black, #fff);
+}
+
+.world-engine-setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.world-engine-setting-label {
+    font-weight: 600;
+}
+
+.world-engine-setting-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 220px;
+}
+
+.world-engine-speed-value {
+    min-width: 48px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.world-engine-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-weight: 500;
+}
+
 .world-engine-open-button {
     display: flex;
     align-items: center;
