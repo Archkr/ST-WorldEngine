@@ -1,3 +1,5 @@
+import { ExpressionTextureClient } from './expression-listener.js';
+
 const state = {
     position: { x: 0, y: 1.6, z: 10 },
     yaw: Math.PI,
@@ -339,5 +341,8 @@ function init() {
     setupEvents();
     animate();
 }
+
+window.WorldEngine = window.WorldEngine || {};
+window.WorldEngine.ExpressionTextureClient = ExpressionTextureClient;
 
 init();
