@@ -1,10 +1,9 @@
-import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '../extensions.js';
-import { callGenericPopup, POPUP_TYPE } from '../popup.js';
+import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '/scripts/extensions.js';
+import { callGenericPopup, POPUP_TYPE } from '/scripts/popup.js';
 
 const EXTENSION_NAME = 'world-engine';
-const EXTENSION_FOLDER = EXTENSION_NAME;
-const RESOURCE_ROOT = `${EXTENSION_FOLDER}/resources/world-engine`;
-const VIEW_URL = `${RESOURCE_ROOT}/index.html`;
+const EXTENSION_BASE_URL = new URL('.', import.meta.url);
+const VIEW_URL = new URL('./resources/world-engine/index.html', EXTENSION_BASE_URL).toString();
 const DEFAULT_SETTINGS = {
     movementSpeed: 1.0,
     invertLook: false,
@@ -23,7 +22,7 @@ function getMenuContainer() {
 }
 
 async function renderWorldEngineTemplate(name, context = {}) {
-    const templatePath = `${EXTENSION_FOLDER}/templates/${name}.html`;
+    const templatePath = new URL(`./templates/${name}.html`, EXTENSION_BASE_URL).toString();
 
     try {
         const response = await fetch(templatePath, { cache: 'no-cache' });
@@ -94,7 +93,7 @@ async function openWorldEnginePopup() {
 }
 
 function buildViewUrl(settings) {
-    const url = new URL(VIEW_URL, window.location.origin);
+    const url = new URL(VIEW_URL);
     url.searchParams.set('moveSpeed', String(settings.movementSpeed ?? DEFAULT_SETTINGS.movementSpeed));
     url.searchParams.set('invertLook', String(Boolean(settings.invertLook ?? DEFAULT_SETTINGS.invertLook)));
     url.searchParams.set('showInstructions', String(Boolean(settings.showInstructions ?? DEFAULT_SETTINGS.showInstructions)));
