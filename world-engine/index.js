@@ -1,8 +1,8 @@
-import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '../../extensions.js';
-import { callGenericPopup, POPUP_TYPE } from '../../popup.js';
+import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '../extensions.js';
+import { callGenericPopup, POPUP_TYPE } from '../popup.js';
 
 const EXTENSION_NAME = 'world-engine';
-const EXTENSION_FOLDER = `extensions/${EXTENSION_NAME}`;
+const EXTENSION_FOLDER = EXTENSION_NAME;
 const RESOURCE_ROOT = `${EXTENSION_FOLDER}/resources/world-engine`;
 const VIEW_URL = `${RESOURCE_ROOT}/index.html`;
 const DEFAULT_SETTINGS = {
@@ -22,10 +22,38 @@ function getMenuContainer() {
     return null;
 }
 
+async function renderWorldEngineTemplate(name, context = {}) {
+    const templatePath = `${EXTENSION_FOLDER}/templates/${name}.html`;
+
+    try {
+        const response = await fetch(templatePath, { cache: 'no-cache' });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load template: ${templatePath}`);
+        }
+
+        const templateSource = await response.text();
+
+        if (window.Handlebars?.compile) {
+            return window.Handlebars.compile(templateSource)(context);
+        }
+
+        return templateSource;
+    } catch (error) {
+        console.warn('[World Engine] Falling back to default template renderer.', error);
+
+        if (typeof renderExtensionTemplateAsync === 'function') {
+            return renderExtensionTemplateAsync(EXTENSION_NAME, name, context);
+        }
+
+        throw error;
+    }
+}
+
 async function openWorldEnginePopup() {
     const settings = getSettings();
     const viewUrl = buildViewUrl(settings);
-    const template = await renderExtensionTemplateAsync(EXTENSION_NAME, 'window', { src: viewUrl });
+    const template = await renderWorldEngineTemplate('window', { src: viewUrl });
     const dialog = $(template);
 
     dialog.on('load', '#world_engine_iframe', (event) => {
