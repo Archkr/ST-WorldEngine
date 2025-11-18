@@ -3,9 +3,10 @@
 An embedded 3D park viewer for SillyTavern's extension menu. This readme covers setup, controls, and the optional integration hooks the extension exposes.
 
 ## Setup
-1. Enable the **World Engine** extension inside SillyTavern.
-2. Open the extension window from the Extensions sidebar. Use the **Open in new tab** button if you prefer a detached view.
-3. Adjust the extension settings (below the iframe) to tune the experience before clicking into the scene.
+1. Place the `world-engine` folder in the main SillyTavern directory (no longer inside the `extensions/` folder).
+2. Enable the **World Engine** extension inside SillyTavern.
+3. Open the extension window from the Extensions sidebar. Use the **Open in new tab** button if you prefer a detached view.
+4. Adjust the extension settings (below the iframe) to tune the experience before clicking into the scene.
 
 ## Controls and keybindings
 - **Move:** `W`, `A`, `S`, `D` (arrow keys also work).
