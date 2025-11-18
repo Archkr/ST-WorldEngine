@@ -1,10 +1,15 @@
-import { renderExtensionTemplateAsync } from '../../extensions.js';
+import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '../../extensions.js';
 import { callGenericPopup, POPUP_TYPE } from '../../popup.js';
 
 const EXTENSION_NAME = 'world-engine';
 const EXTENSION_FOLDER = `extensions/${EXTENSION_NAME}`;
 const RESOURCE_ROOT = `${EXTENSION_FOLDER}/resources/world-engine`;
 const VIEW_URL = `${RESOURCE_ROOT}/index.html`;
+const DEFAULT_SETTINGS = {
+    movementSpeed: 1.0,
+    invertLook: false,
+    showInstructions: true,
+};
 
 function getMenuContainer() {
     const selectors = ['#extensionsMenu', '#extensions-menu', '#extensionsList', '#extensionsMenuContainer', '#extensions_menu'];
@@ -18,13 +23,74 @@ function getMenuContainer() {
 }
 
 async function openWorldEnginePopup() {
-    const template = await renderExtensionTemplateAsync(EXTENSION_NAME, 'window', { src: VIEW_URL });
+    const settings = getSettings();
+    const viewUrl = buildViewUrl(settings);
+    const template = await renderExtensionTemplateAsync(EXTENSION_NAME, 'window', { src: viewUrl });
     const dialog = $(template);
-    dialog.on('click', '#world_engine_open_in_tab', () => {
-        window.open(VIEW_URL, '_blank', 'noopener');
+
+    dialog.on('load', '#world_engine_iframe', (event) => {
+        sendSettingsToFrame(event.target.contentWindow);
     });
 
+    dialog.on('input', '#world_engine_speed', (event) => {
+        const value = Number(event.target.value) || DEFAULT_SETTINGS.movementSpeed;
+        settings.movementSpeed = Math.max(0.1, value);
+        dialog.find('#world_engine_speed_value').text(`${settings.movementSpeed.toFixed(1)}x`);
+        persistSettings();
+        sendSettingsToFrame(dialog.find('#world_engine_iframe')[0]?.contentWindow);
+    });
+
+    dialog.on('change', '#world_engine_invert_look', (event) => {
+        settings.invertLook = Boolean(event.target.checked);
+        persistSettings();
+        sendSettingsToFrame(dialog.find('#world_engine_iframe')[0]?.contentWindow);
+    });
+
+    dialog.on('change', '#world_engine_show_instructions', (event) => {
+        settings.showInstructions = Boolean(event.target.checked);
+        persistSettings();
+        sendSettingsToFrame(dialog.find('#world_engine_iframe')[0]?.contentWindow);
+    });
+
+    dialog.on('click', '#world_engine_open_in_tab', () => {
+        const url = buildViewUrl(settings);
+        window.open(url, '_blank', 'noopener');
+    });
+
+    dialog.find('#world_engine_speed').val(settings.movementSpeed);
+    dialog.find('#world_engine_speed_value').text(`${settings.movementSpeed.toFixed(1)}x`);
+    dialog.find('#world_engine_invert_look').prop('checked', settings.invertLook);
+    dialog.find('#world_engine_show_instructions').prop('checked', settings.showInstructions);
+
     callGenericPopup(dialog, POPUP_TYPE.TEXT, 'World Engine', { wide: true, large: true, allowVerticalScrolling: false });
+}
+
+function buildViewUrl(settings) {
+    const url = new URL(VIEW_URL, window.location.origin);
+    url.searchParams.set('moveSpeed', String(settings.movementSpeed ?? DEFAULT_SETTINGS.movementSpeed));
+    url.searchParams.set('invertLook', String(Boolean(settings.invertLook ?? DEFAULT_SETTINGS.invertLook)));
+    url.searchParams.set('showInstructions', String(Boolean(settings.showInstructions ?? DEFAULT_SETTINGS.showInstructions)));
+    return url.toString();
+}
+
+function getSettings() {
+    extension_settings[EXTENSION_NAME] = Object.assign({}, DEFAULT_SETTINGS, extension_settings[EXTENSION_NAME]);
+    return extension_settings[EXTENSION_NAME];
+}
+
+function persistSettings() {
+    if (typeof saveSettingsDebounced === 'function') {
+        saveSettingsDebounced();
+    }
+}
+
+function sendSettingsToFrame(frame) {
+    if (!frame?.postMessage) return;
+    frame.postMessage({
+        source: EXTENSION_NAME,
+        type: 'world-engine-settings',
+        payload: getSettings(),
+    }, '*');
 }
 
 function addMenuButton() {

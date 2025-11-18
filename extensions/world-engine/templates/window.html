@@ -12,4 +12,21 @@
     <div class="world-engine-iframe-wrapper">
         <iframe id="world_engine_iframe" class="world-engine-iframe" src="{{src}}" title="World Engine" allowfullscreen></iframe>
     </div>
+    <div class="world-engine-settings" id="world_engine_settings">
+        <div class="world-engine-setting-row">
+            <div class="world-engine-setting-label" data-i18n="Movement speed">Movement speed</div>
+            <div class="world-engine-setting-control">
+                <input type="range" id="world_engine_speed" min="0.5" max="3" step="0.1">
+                <div class="world-engine-speed-value" id="world_engine_speed_value">1.0x</div>
+            </div>
+        </div>
+        <label class="world-engine-checkbox">
+            <input type="checkbox" id="world_engine_invert_look">
+            <span data-i18n="Invert look (vertical)">Invert look (vertical)</span>
+        </label>
+        <label class="world-engine-checkbox">
+            <input type="checkbox" id="world_engine_show_instructions">
+            <span data-i18n="Show instructions overlay">Show instructions overlay</span>
+        </label>
+    </div>
 </div>
