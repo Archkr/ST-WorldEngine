@@ -38,7 +38,7 @@
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
         const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.8, 0); 
         const CHAT_HISTORY_LIMIT = 12;
-        const CHAT_WORLD_WIDTH = 8; // Slightly wider for better readability
+        const CHAT_WORLD_WIDTH = 8; 
         const PLAYER_EYE_HEIGHT = 1.7;
         const GRAVITY = 32.0;
         const JUMP_FORCE = 13.0;
@@ -157,7 +157,14 @@
             material.onBeforeCompile = (shader) => {
                 shader.uniforms.time = globalUniforms.time;
                 shader.uniforms.windStrength = globalUniforms.windStrength;
-                shader.vertexShader = `uniform float time; uniform float windStrength; ${shader.vertexShader}`;
+                
+                // FIXED: Added newline \n before appending the rest of the shader
+                shader.vertexShader = `
+                    uniform float time; 
+                    uniform float windStrength;
+                    ${shader.vertexShader}
+                `;
+                
                 shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
                     `#include <begin_vertex>
                     float mask = max(0.0, position.y);
@@ -313,7 +320,7 @@
             scene.add(chatSprite);
         }
 
-        // --- CHAT SYSTEM (NATIVE LOOK) ---
+        // --- CHAT SYSTEM ---
         function updateChatMessage(message, role='assistant') { recordChatMessage(role, message); }
         function recordChatMessage(role, message) {
             state.chatHistory.push({ role: role==='user'?'user':'assistant', text: String(message||'').trim() });
@@ -337,13 +344,13 @@
         }
 
         function createChatTexture(entry) {
-            const padding=60, headerHeight=60, lineHeight=52, canvasWidth=2048; // High Res
+            const padding=60, headerHeight=60, lineHeight=52, canvasWidth=2048;
             const maxWidth = canvasWidth - (padding*2);
             const tailHeight = 40;
 
             const mCanvas = document.createElement('canvas');
             const mCtx = mCanvas.getContext('2d');
-            mCtx.font = '500 42px "Inter", "Segoe UI", sans-serif'; // Larger font for High DPI
+            mCtx.font = '500 42px "Inter", "Segoe UI", sans-serif';
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
             const totalHeight = padding + headerHeight + (wrappedLines.length * lineHeight) + padding + tailHeight;
 
@@ -354,11 +361,10 @@
             const bubbleHeight = canvas.height - tailHeight - 30;
 
             // --- SillyTavern Dark Theme Style ---
-            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)'; // Dark gray background
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; // Subtle border
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)'; 
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; 
             ctx.lineWidth = 4;
             
-            // Soft Shadow
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.shadowBlur = 40;
             ctx.shadowOffsetY = 20;
@@ -366,7 +372,6 @@
             roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 50, true, true);
             ctx.shadowColor = 'transparent';
 
-            // Tail
             ctx.beginPath();
             const tailX = canvas.width / 2;
             const tailY = 20 + bubbleHeight;
@@ -375,17 +380,14 @@
             ctx.lineTo(tailX + 30, tailY);
             ctx.fillStyle = 'rgba(30, 33, 36, 0.95)';
             ctx.fill();
-            // Draw border line over tail connection if needed, but simple fill is cleaner
 
-            // Name
             ctx.font = 'bold 38px "Inter", sans-serif';
-            ctx.fillStyle = '#0078d7'; // Smart Theme Blue (Accent)
+            ctx.fillStyle = '#0078d7'; 
             ctx.textBaseline = 'top';
             ctx.fillText("ASSISTANT", padding + 20, padding + 20);
 
-            // Text
             ctx.font = '400 42px "Inter", "Segoe UI", sans-serif';
-            ctx.fillStyle = '#e0e0e0'; // Off-white text
+            ctx.fillStyle = '#e0e0e0';
             let textY = padding + 20 + headerHeight;
             wrappedLines.forEach(line => { ctx.fillText(line, padding + 20, textY); textY += lineHeight; });
 
