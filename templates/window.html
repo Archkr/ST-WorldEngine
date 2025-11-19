@@ -5,24 +5,39 @@
             <p class="world-engine-description" data-i18n="Open an interactive 3D view inside SillyTavern.">Open an interactive 3D view inside SillyTavern.</p>
         </div>
     </div>
+    
     <div class="world-engine-iframe-wrapper">
         <iframe id="world_engine_iframe" class="world-engine-iframe" src="{{src}}" title="World Engine" allowfullscreen></iframe>
     </div>
+
     <div class="world-engine-settings" id="world_engine_settings">
-        <div class="world-engine-setting-row">
-            <div class="world-engine-setting-label" data-i18n="Movement speed">Movement speed</div>
-            <div class="world-engine-setting-control">
-                <input type="range" id="world_engine_speed" min="0.5" max="3" step="0.1">
+        
+        <!-- Speed Slider -->
+        <div class="world-engine-setting-card">
+            <div class="world-engine-setting-header">
+                <div class="world-engine-setting-label" data-i18n="Movement speed">Movement Speed</div>
                 <div class="world-engine-speed-value" id="world_engine_speed_value">1.0x</div>
             </div>
+            <input type="range" id="world_engine_speed" class="world-engine-slider" min="0.5" max="3" step="0.1">
         </div>
-        <label class="world-engine-checkbox">
-            <input type="checkbox" id="world_engine_invert_look">
-            <span data-i18n="Invert look (vertical)">Invert look (vertical)</span>
-        </label>
-        <label class="world-engine-checkbox">
-            <input type="checkbox" id="world_engine_show_instructions">
-            <span data-i18n="Show instructions overlay">Show instructions overlay</span>
-        </label>
+
+        <!-- Invert Look -->
+        <div class="world-engine-setting-card">
+            <label class="world-engine-toggle">
+                <span class="world-engine-setting-label" data-i18n="Invert look (vertical)">Invert Look</span>
+                <input type="checkbox" id="world_engine_invert_look">
+                <span class="world-engine-toggle-track"></span>
+            </label>
+        </div>
+
+        <!-- Instructions -->
+        <div class="world-engine-setting-card">
+            <label class="world-engine-toggle">
+                <span class="world-engine-setting-label" data-i18n="Show instructions overlay">Show Overlay</span>
+                <input type="checkbox" id="world_engine_show_instructions">
+                <span class="world-engine-toggle-track"></span>
+            </label>
+        </div>
+
     </div>
 </div>
