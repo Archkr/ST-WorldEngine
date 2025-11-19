@@ -1,147 +1,225 @@
 /* PASTE THIS INTO: Resources/world-engine/style.css 
-   This aligns the internal 3D UI with the main extension theme.
+   REWORKED: "Aero Glass" RPG Theme for the 3D World
 */
 
 :root {
-    /* Fallbacks if ST variables aren't inherited by iframe */
     --smart-theme-color: #0078d7;
-    --block-body: #151515;
-    --text-body: #ffffff;
+    --glass-bg: rgba(18, 18, 24, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
 }
 
 body {
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
-    overflow: hidden; /* Prevent scrollbars on the canvas */
+    padding: 0;
+    overflow: hidden;
+    background-color: #000;
+    width: 100vw;
+    height: 100vh;
+    user-select: none; /* Prevent highlighting UI text while looking around */
 }
 
-/* --- 1. Chat Bubbles (Floating above characters) --- */
-.chat-bubble, .bubble, .message-container {
-    background: rgba(20, 20, 20, 0.65) !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 16px !important;
-    color: #eee !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-    padding: 16px 20px !important;
-    max-width: 320px !important;
-    font-size: 0.95rem !important;
-    line-height: 1.5 !important;
-    transform-origin: bottom center;
-    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-/* Specific styling for the speaker name if present */
-.chat-name, .speaker-name, strong {
-    color: var(--smart-theme-color) !important;
-    font-weight: 700 !important;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+/* --- 0. Canvas Layout --- */
+canvas, #canvas, .three-canvas {
     display: block;
-    margin-bottom: 6px;
-    font-size: 0.85em;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 0 !important;
+    outline: none;
 }
 
-/* --- 2. Bottom Input Bar --- */
-/* Container for the input and button */
-#input-area, .controls, .input-container, footer {
+/* --- 1. RPG Speech Bubbles --- */
+.chat-bubble, .bubble, .message-container {
     position: absolute;
-    bottom: 20px;
+    z-index: 10;
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 18px !important;
+    padding: 18px 24px !important;
+    
+    /* Positioning & Sizing */
+    max-width: 360px !important;
+    min-width: 200px;
+    transform-origin: bottom center;
+    
+    /* Typography */
+    color: var(--text-primary) !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+    font-weight: 400;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+    
+    /* Animation */
+    animation: popIn 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards, floatBubble 6s ease-in-out infinite;
+}
+
+/* The "Tail" of the speech bubble */
+.chat-bubble::after, .bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
     left: 50%;
     transform: translateX(-50%);
-    width: 90%;
-    max-width: 800px;
+    border-width: 10px 10px 0;
+    border-style: solid;
+    border-color: var(--glass-bg) transparent transparent transparent;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));
+}
+
+/* Speaker Name Styling */
+.chat-name, .speaker-name, strong {
+    display: block;
+    color: var(--smart-theme-color) !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 800 !important;
+    margin-bottom: 6px;
+    opacity: 0.9;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+/* --- 2. Floating Capsule Input Bar --- */
+#input-area, .controls, .input-container, footer, #ui-container {
+    position: absolute !important;
+    bottom: 32px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 95%;
+    max-width: 700px;
+    
     display: flex !important;
-    gap: 12px !important;
     align-items: center !important;
-    z-index: 100;
+    gap: 0 !important; /* Gap handled by padding/margin inside */
+    
+    z-index: 100 !important;
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px; /* Full capsule shape */
+    padding: 6px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
     pointer-events: auto;
 }
 
-/* The text input field */
+/* Input Field */
 input[type="text"], textarea {
     flex: 1;
-    background: rgba(0, 0, 0, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: transparent !important;
+    border: none !important;
     color: #fff !important;
-    border-radius: 30px !important;
-    padding: 14px 24px !important;
+    padding: 12px 20px !important;
     font-size: 1rem !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    outline: none;
+    box-shadow: none !important;
 }
 
 input[type="text"]::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.4);
 }
 
-input[type="text"]:focus {
-    background: rgba(0, 0, 0, 0.8) !important;
-    border-color: var(--smart-theme-color) !important;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0,0,0,0.5) !important;
-    outline: none !important;
-    transform: translateY(-2px);
-}
-
-/* The Send Button */
+/* Send Button (Circle) */
 button, .send-btn, input[type="submit"] {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    
     background: var(--smart-theme-color) !important;
-    color: #fff !important;
     border: none !important;
-    border-radius: 50px !important;
-    padding: 0 28px !important;
-    height: 50px !important;
-    font-weight: 700 !important;
-    text-transform: uppercase;
-    font-size: 0.85rem !important;
-    letter-spacing: 1px;
-    cursor: pointer !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
-    transition: all 0.2s ease !important;
+    color: white !important;
+    
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+button::before {
+    content: '\f0d8'; /* FontAwesome Send Icon/Arrow if available, fallback usually handled by HTML */
+    font-family: "Font Awesome 6 Free", "FontAwesome", sans-serif; 
+    font-weight: 900;
+    font-size: 1.1em;
+}
+
+/* Hide text inside button if we are using icon, or style the text if it's mandatory */
+button span {
+    display: none; /* If the HTML has <span>Send</span>, hide it for the circle look */
 }
 
 button:hover {
-    filter: brightness(1.2);
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.5) !important;
+    transform: scale(1.1);
+    background: #fff !important;
+    color: var(--smart-theme-color) !important;
+    box-shadow: 0 6px 20px rgba(255,255,255,0.2);
 }
 
 button:active {
-    transform: translateY(1px) scale(0.98);
+    transform: scale(0.9);
 }
 
 /* --- 3. Instructions Overlay --- */
 .overlay, #instructions, .help-text {
-    background: rgba(0, 0, 0, 0.7) !important;
-    backdrop-filter: blur(8px);
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 50;
+    
+    background: linear-gradient(135deg, rgba(20,20,20,0.9), rgba(40,40,40,0.8)) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px;
     padding: 20px;
-    color: #eee;
-    border: 1px solid rgba(255,255,255,0.1);
-    font-size: 0.9rem;
-    max-width: 300px;
+    
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.8;
+    max-width: 280px;
+    pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
 
-/* Keycap styling for instructions like [W] [A] [S] [D] */
+/* Header in instructions */
+.overlay h3, #instructions h3, .help-text h3 {
+    margin-top: 0;
+    color: #fff;
+    font-size: 1rem;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 8px;
+}
+
+/* Keycaps */
 kbd, .key {
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-family: monospace;
-    font-weight: bold;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.5);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 2px 8px;
+    color: #fff;
+    font-family: "Consolas", monospace;
+    font-weight: 600;
+    font-size: 0.8em;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.3);
+    margin: 0 2px;
 }
 
-/* Animation for bubbles */
+/* --- Animations --- */
 @keyframes popIn {
-    0% { opacity: 0; transform: scale(0.8) translateY(10px); }
+    0% { opacity: 0; transform: scale(0.9) translateY(20px); }
     100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes floatBubble {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
 }
