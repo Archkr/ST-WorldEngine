@@ -108,10 +108,11 @@
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            // Adjusted Lighting for realism
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Slightly dimmer ambient
             scene.add(ambientLight);
 
-            const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.4);
+            const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2); // Warmer sun
             sunLight.position.set(60, 100, 40);
             sunLight.castShadow = true;
             sunLight.shadow.mapSize.width = 2048;
@@ -123,14 +124,18 @@
             sunLight.shadow.camera.bottom = -d;
             sunLight.shadow.bias = -0.0005;
             scene.add(sunLight);
+            
+            // Ground bounce light (Hemisphere)
+            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x5ba635, 0.3);
+            scene.add(hemiLight);
 
-            const rimLight = new THREE.DirectionalLight(0xaaccff, 0.4);
+
+            const rimLight = new THREE.DirectionalLight(0xaaccff, 0.3);
             rimLight.position.set(-50, 30, -50);
             scene.add(rimLight);
 
             buildWorld();
             
-            // Spawn Player slightly further inland (Z=28) to avoid steep slopes
             const spawnZ = 28; 
             const spawnY = getTerrainHeight(0, spawnZ);
             camera.position.set(0, spawnY + PLAYER_EYE_HEIGHT, spawnZ);
@@ -188,6 +193,32 @@
                 h -= depth;
             }
             return h;
+        }
+
+        function getStructureCollisionHeight(x, z) {
+            // Dais is at 0,0,28 (spawnZ was 28 in previous step, but structure was built at spawnZ)
+            // Let's verify where buildAvatarAndStructure puts it.
+            // It uses spawnZ = 28.
+            
+            const centerX = 0;
+            const centerZ = 28;
+            const dx = x - centerX;
+            const dz = z - centerZ;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            
+            // Terrain height at structure center
+            const terrainH = getTerrainHeight(centerX, centerZ); 
+            
+            // Bottom Step: Radius ~3.8, Height +0.3 relative to terrainH (technically 0.15 above center)
+            // Top Platform: Radius ~3.0, Height +0.6 relative to terrainH
+            
+            if (dist < 3.0) {
+                return terrainH + 0.6; // Top platform height
+            } else if (dist < 3.8) {
+                return terrainH + 0.3; // Bottom step height
+            }
+            
+            return -999; // No structure here
         }
 
         function buildWorld() {
@@ -298,7 +329,6 @@
         }
 
         function buildAvatarAndStructure() {
-            // Spawn Point: Further inland to avoid steep river banks
             const spawnZ = 28;
             const spawnY = getTerrainHeight(0, spawnZ);
 
@@ -311,10 +341,9 @@
                 flatShading: true 
             });
 
-            // 1. Deep Foundation (The fix for floating)
-            // A cylinder extending downwards into the earth
+            // 1. Deep Foundation
             const foundation = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 6.0, 8), stoneMat);
-            foundation.position.y = -3.0; // Center goes deep
+            foundation.position.y = -3.0;
             foundation.receiveShadow = true;
             structureGroup.add(foundation);
 
@@ -322,13 +351,14 @@
             const step1 = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.8, 0.3, 8), stoneMat);
             step1.position.y = 0.15; 
             step1.receiveShadow = true;
+            step1.castShadow = true; // Casts shadow on ground
             structureGroup.add(step1);
 
             // 3. Top Platform
             const step2 = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 3.0, 0.3, 8), stoneMat);
             step2.position.y = 0.45;
             step2.receiveShadow = true;
-            step2.castShadow = true;
+            step2.castShadow = true; // Casts shadow on step 1
             structureGroup.add(step2);
 
             // 4. Decorative Pillars
@@ -343,20 +373,17 @@
 
             scene.add(structureGroup);
 
-            // --- Character Setup ---
             const loader = new THREE.TextureLoader();
             
-            // FIXED: Use a SpriteMaterial that ignores lighting so colors are preserved
             const avatarMaterial = new THREE.SpriteMaterial({ 
                 transparent: true,
-                toneMapped: false, // Prevent washed-out colors
-                fog: false         // Prevent fog tinting
+                toneMapped: false, 
+                fog: false 
             });
             
             avatarSprite = new THREE.Sprite(avatarMaterial);
             avatarSprite.scale.set(3, 3, 1);
             
-            // Position avatar on top of the steps (0.6 height relative to spawnY)
             avatarSprite.position.set(0, spawnY + 0.6 + 1.5, spawnZ);
             scene.add(avatarSprite);
             
@@ -615,10 +642,16 @@
             camera.position.x += state.velocity.x * delta;
             camera.position.z += state.velocity.z * delta;
             camera.position.y += state.velocity.y * delta;
+            
+            // Collision Logic
+            const terrainH = getTerrainHeight(camera.position.x, camera.position.z);
+            const structureH = getStructureCollisionHeight(camera.position.x, camera.position.z);
+            
+            // The floor is whichever is higher: terrain or structure
+            const floorY = Math.max(terrainH, structureH);
 
-            const h = getTerrainHeight(camera.position.x, camera.position.z);
-            if(camera.position.y < h + PLAYER_EYE_HEIGHT) {
-                camera.position.y = h + PLAYER_EYE_HEIGHT;
+            if(camera.position.y < floorY + PLAYER_EYE_HEIGHT) {
+                camera.position.y = floorY + PLAYER_EYE_HEIGHT;
                 state.velocity.y = Math.max(0, state.velocity.y);
                 state.isGrounded = true;
             } else state.isGrounded = false;
