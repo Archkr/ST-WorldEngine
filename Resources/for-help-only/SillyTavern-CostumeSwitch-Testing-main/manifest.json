@@ -1,0 +1,11 @@
+{
+  "display_name": "Costume Switch Testing",
+  "loading_order": 10,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Archkr",
+  "version": "3.6.0-Testing",
+  "auto_update": true,
+  "homePage": "https://github.com/archkrrr/SillyTavern-CostumeSwitch-Testing",
+  "i18n": {}
+}
