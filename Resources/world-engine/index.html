@@ -12,6 +12,14 @@
         <p>Look: Mouse</p>
     </div>
 
+    <div id="chat_overlay" aria-label="World Engine chat">
+        <div id="chat_log" aria-live="polite"></div>
+        <form id="chat_form" autocomplete="off">
+            <input id="chat_input" name="chat_input" type="text" placeholder="Send a message" inputmode="text" maxlength="500">
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
     <script type="importmap">
         {
             "imports": {
@@ -45,6 +53,7 @@
             pitch: 0,
             lastTime: performance.now(),
             isLocked: false,
+            isChatFocused: false,
             chatText: DEFAULT_CHAT_MESSAGE,
         };
 
@@ -55,6 +64,9 @@
         let chatSprite;
         let avatarSprite;
         let expressionClient;
+        let chatLogElement;
+        let chatInput;
+        let chatForm;
 
         window.WorldEngine = window.WorldEngine || {};
         window.WorldEngine.updateChatMessage = updateChatMessage;
@@ -64,6 +76,7 @@
 
         window.addEventListener(ASSISTANT_MESSAGE_EVENT, (event) => {
             const incoming = event?.detail?.message ?? event?.detail ?? '';
+            appendChatLog('assistant', incoming);
             updateChatMessage(incoming);
         });
 
@@ -99,6 +112,7 @@
 
             setupPointerLock(renderer.domElement);
             setupEvents();
+            setupChatUi();
             updateInstructionsVisibility();
         }
 
@@ -131,6 +145,9 @@
             }
 
             if (data.type === 'world-engine-chat') {
+                if (data.payload?.direction !== 'outgoing') {
+                    appendChatLog(data.payload?.role || 'assistant', data.payload?.text);
+                }
                 updateChatMessage(data.payload?.text);
             }
         }
@@ -158,8 +175,37 @@
             });
         }
 
+        function setupChatUi() {
+            chatLogElement = document.getElementById('chat_log');
+            chatInput = document.getElementById('chat_input');
+            chatForm = document.getElementById('chat_form');
+
+            chatForm?.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const text = chatInput?.value?.trim() ?? '';
+                if (!text) return;
+                dispatchChatMessage(text);
+                if (chatInput) {
+                    chatInput.value = '';
+                }
+            });
+
+            chatInput?.addEventListener('focus', () => {
+                state.isChatFocused = true;
+                resetMovementState();
+                exitPointerLock();
+            });
+
+            chatInput?.addEventListener('blur', () => {
+                state.isChatFocused = false;
+            });
+        }
+
         function setupEvents() {
-            document.addEventListener('keydown', (event) => handleKey(event, true));
+            document.addEventListener('keydown', (event) => {
+                if (handleChatHotkeys(event)) return;
+                handleKey(event, true);
+            });
             document.addEventListener('keyup', (event) => handleKey(event, false));
 
             window.addEventListener('resize', () => {
@@ -169,7 +215,26 @@
             });
         }
 
+        function handleChatHotkeys(event) {
+            if (state.isChatFocused) {
+                if (event.code === 'Escape') {
+                    chatInput?.blur();
+                    return true;
+                }
+                return false;
+            }
+
+            if (event.code === 'Enter' && (!event.target || event.target === document.body)) {
+                chatInput?.focus();
+                return true;
+            }
+
+            return false;
+        }
+
         function handleKey(event, pressed) {
+            if (state.isChatFocused) return;
+            if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
             switch (event.code) {
                 case 'ArrowUp':
                 case 'KeyW':
@@ -189,6 +254,37 @@
                     break;
                 default:
                     break;
+            }
+        }
+
+        function exitPointerLock() {
+            if (document.pointerLockElement === renderer?.domElement) {
+                document.exitPointerLock?.();
+            }
+        }
+
+        function resetMovementState() {
+            state.moveForward = false;
+            state.moveBackward = false;
+            state.moveLeft = false;
+            state.moveRight = false;
+            state.velocity.set?.(0, 0, 0);
+        }
+
+        function dispatchChatMessage(text) {
+            appendChatLog('user', text);
+            updateChatMessage(text);
+
+            const payload = { text, role: 'user', direction: 'outgoing' };
+
+            try {
+                window.parent?.postMessage({
+                    source: 'world-engine',
+                    type: 'world-engine-chat',
+                    payload,
+                }, '*');
+            } catch (error) {
+                console.warn('[World Engine] Failed to dispatch chat message', error);
             }
         }
 
@@ -269,6 +365,25 @@
 
             chatMaterial.map = createTextTexture(state.chatText);
             chatMaterial.needsUpdate = true;
+        }
+
+        function appendChatLog(role, message) {
+            if (!chatLogElement || (!message && message !== '')) return;
+            const entry = document.createElement('div');
+            entry.className = `chat-log-entry chat-log-${role}`;
+
+            const label = document.createElement('span');
+            label.className = 'chat-log-label';
+            label.textContent = role === 'assistant' ? 'Assistant' : 'You';
+
+            const text = document.createElement('span');
+            text.className = 'chat-log-text';
+            text.textContent = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
+
+            entry.appendChild(label);
+            entry.appendChild(text);
+            chatLogElement.appendChild(entry);
+            chatLogElement.scrollTop = chatLogElement.scrollHeight;
         }
 
         function createTextTexture(message) {
