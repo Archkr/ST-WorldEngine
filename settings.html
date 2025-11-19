@@ -8,6 +8,8 @@
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
         </div>
         <div class="inline-drawer-content world-engine-settings-panel">
+            
+            <!-- Header Toolbar -->
             <div class="world-engine-toolbar">
                 <div>
                     <h3 data-i18n="World Engine">World Engine</h3>
@@ -19,6 +21,7 @@
                 </button>
             </div>
 
+            <!-- Iframe View -->
             <div class="world-engine-iframe-wrapper is-hidden">
                 <iframe id="world_engine_iframe" class="world-engine-iframe" title="World Engine" allowfullscreen></iframe>
                 <button class="world-engine-overlay-button" id="world_engine_minimize" type="button">
@@ -27,24 +30,37 @@
                 </button>
             </div>
 
+            <!-- Settings Grid -->
             <div class="world-engine-settings" id="world_engine_settings">
-                <div class="world-engine-setting-row">
-                    <div class="world-engine-setting-label" data-i18n="Movement speed">Movement speed</div>
-                    <div class="world-engine-setting-control">
-                        <input type="range" id="world_engine_speed" min="0.5" max="3" step="0.1">
+                
+                <!-- Speed Slider Card -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Movement speed">Movement Speed</div>
                         <div class="world-engine-speed-value" id="world_engine_speed_value">1.0x</div>
                     </div>
+                    <input type="range" id="world_engine_speed" class="world-engine-slider" min="0.5" max="3" step="0.1">
                 </div>
-                <label class="checkbox_label world-engine-checkbox">
-                    <input type="checkbox" id="world_engine_invert_look">
-                    <span data-i18n="Invert look (vertical)">Invert look (vertical)</span>
-                </label>
-                <label class="checkbox_label world-engine-checkbox">
-                    <input type="checkbox" id="world_engine_show_instructions">
-                    <span data-i18n="Show instructions overlay">Show instructions overlay</span>
-                </label>
+
+                <!-- Invert Look Card -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Invert look (vertical)">Invert Look (Vertical)</span>
+                        <input type="checkbox" id="world_engine_invert_look">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Instructions Card -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Show instructions overlay">Show Overlay</span>
+                        <input type="checkbox" id="world_engine_show_instructions">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
             </div>
         </div>
     </div>
 </div>
-
