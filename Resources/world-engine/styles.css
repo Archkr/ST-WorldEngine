@@ -1,11 +1,9 @@
-/* PASTE THIS INTO: Resources/world-engine/dist/styles.css 
-   REWORKED: "Aero Glass" RPG Theme for the 3D World
-*/
+/* REWORKED: "Aero Glass" Theme for World Engine */
 
 :root {
     --smart-theme-color: #0078d7;
-    --glass-bg: rgba(18, 18, 24, 0.75);
-    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-bg: rgba(18, 18, 24, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.15);
     --text-primary: #ffffff;
     --text-secondary: #cccccc;
 }
@@ -21,176 +19,149 @@ body {
     user-select: none;
 }
 
-/* --- 0. Canvas Layout (Forces 3D to back) --- */
-canvas, #canvas, .three-canvas {
+/* --- Canvas Layout --- */
+canvas {
     display: block;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    z-index: 0 !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
     outline: none;
 }
 
-/* --- 1. RPG Speech Bubbles --- */
-/* We use broad selectors to catch whatever class the 3D engine uses */
-.chat-bubble, .bubble, .message-container, #chat-bubble {
+/* --- Input Bar (Floating Capsule) --- */
+#chat_overlay {
     position: absolute;
-    z-index: 10;
-    background: var(--glass-bg) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    border: 1px solid var(--glass-border) !important;
-    border-radius: 18px !important;
-    padding: 18px 24px !important;
-    
-    /* Sizing */
-    max-width: 360px !important;
-    min-width: 200px;
-    transform-origin: bottom center;
-    
-    /* Typography */
-    color: var(--text-primary) !important;
-    font-size: 0.95rem !important;
-    line-height: 1.6 !important;
-    font-weight: 400;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-    
-    /* Animation */
-    animation: popIn 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards, floatBubble 6s ease-in-out infinite;
-}
-
-/* The "Tail" of the speech bubble */
-.chat-bubble::after, .bubble::after, .message-container::after {
-    content: '';
-    position: absolute;
-    bottom: -10px;
+    bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
-    border-width: 10px 10px 0;
-    border-style: solid;
-    border-color: var(--glass-bg) transparent transparent transparent;
-    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));
-}
-
-/* Speaker Name */
-.chat-name, .speaker-name, strong {
-    display: block;
-    color: var(--smart-theme-color) !important;
-    font-size: 0.75rem !important;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 800 !important;
-    margin-bottom: 6px;
-    opacity: 0.9;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-
-/* --- 2. Floating Capsule Input Bar --- */
-/* Broad selectors to ensure we catch the input container */
-#input-area, .controls, .input-container, footer, #ui-container, .chat-controls {
-    position: absolute !important;
-    bottom: 32px !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
     width: 95%;
     max-width: 700px;
+    z-index: 100;
+    pointer-events: none; /* Allow clicking through empty space */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#chat_form {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    
-    z-index: 100 !important;
-    background: var(--glass-bg) !important;
+    background: var(--glass-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
     border-radius: 50px;
-    padding: 6px 12px !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
-    pointer-events: auto;
+    padding: 6px 8px 6px 20px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    transition: all 0.3s ease;
+}
+
+#chat_form:focus-within {
+    background: rgba(25, 25, 35, 0.85);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 15px 50px rgba(0,0,0,0.6);
+    transform: translateY(-2px);
 }
 
 /* Input Field */
-input[type="text"], textarea {
+#chat_input {
     flex: 1;
-    background: transparent !important;
-    border: none !important;
-    color: #fff !important;
-    padding: 12px 16px !important;
-    font-size: 1rem !important;
+    background: transparent;
+    border: none;
+    color: #fff;
+    padding: 10px 0;
+    font-size: 1rem;
+    font-family: inherit;
     outline: none;
-    box-shadow: none !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-input[type="text"]::placeholder {
-    color: rgba(255, 255, 255, 0.4);
+#chat_input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
 }
 
 /* Send Button */
-button, .send-btn, input[type="submit"], #send-button {
-    width: 42px !important;
-    height: 42px !important;
-    border-radius: 50% !important;
-    padding: 0 !important;
-    
-    background: var(--smart-theme-color) !important;
-    border: none !important;
-    color: white !important;
-    
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer !important;
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    font-size: 0 !important; /* Hide default text to show icon */
+#chat_form button {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--smart-theme-color);
+    border: none;
+    color: transparent; /* Hide text */
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    flex-shrink: 0;
 }
 
-/* Force an arrow icon */
-button::before, .send-btn::before {
-    content: '➤'; 
+/* Arrow Icon */
+#chat_form button::after {
+    content: '➤';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-55%, -50%); /* Center optically */
+    color: #fff;
     font-size: 16px;
     font-weight: bold;
-    margin-left: -2px; /* Optical correction */
 }
 
-button:hover {
+#chat_form button:hover {
     transform: scale(1.1);
-    background: #fff !important;
-    color: var(--smart-theme-color) !important;
-    box-shadow: 0 6px 20px rgba(255,255,255,0.2);
+    background: #fff;
 }
 
-/* --- 3. Instructions Overlay --- */
-.overlay, #instructions, .help-text {
+#chat_form button:hover::after {
+    color: var(--smart-theme-color);
+}
+
+#chat_form button:active {
+    transform: scale(0.95);
+}
+
+/* --- Chat Log (Hidden by default, can show history) --- */
+#chat_log {
+    display: none; /* Hidden in favor of bubbles, enable if you want a persistent log */
+}
+
+/* --- Instructions Overlay --- */
+#instructions {
     position: absolute;
     top: 24px;
     left: 24px;
     z-index: 50;
     
-    background: linear-gradient(135deg, rgba(20,20,20,0.9), rgba(40,40,40,0.8)) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 20px;
+    background: linear-gradient(135deg, rgba(20,20,20,0.85), rgba(40,40,40,0.75));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px 24px;
     
     color: var(--text-secondary);
-    font-size: 0.85rem;
-    line-height: 1.8;
-    max-width: 280px;
+    font-size: 0.9rem;
+    max-width: 250px;
     pointer-events: none;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
 
-/* Animations */
-@keyframes popIn {
-    0% { opacity: 0; transform: scale(0.9) translateY(20px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
+#instructions h1 {
+    margin: 0 0 12px 0;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 8px;
 }
 
-@keyframes floatBubble {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
+#instructions p {
+    margin: 6px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
