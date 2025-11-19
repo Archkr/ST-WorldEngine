@@ -6,7 +6,7 @@
     "js": "index.js",
     "settings": "settings.html",
     "css": "style.css",
-    "author": "OpenAI",
-    "version": "1.0.0",
-    "homePage": "https://example.com/world-engine"
+    "author": "Archkr",
+    "version": "0.1.0-BETA",
+    "homePage": "https://github.com/Archkr/ST-WorldEngine"
 }
