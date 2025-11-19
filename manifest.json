@@ -4,6 +4,7 @@
     "requires": [],
     "optional": [],
     "js": "index.js",
+    "settings": "settings.html",
     "css": "style.css",
     "author": "OpenAI",
     "version": "1.0.0",
