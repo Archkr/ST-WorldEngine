@@ -27,6 +27,7 @@
 
         const DEFAULT_CHAT_MESSAGE = 'Welcome to the Park!';
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
+        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.0, 0);
 
         const runtimeSettings = {
             movementSpeed: 1.0,
@@ -244,15 +245,22 @@
                 expressionClient.swapTexture(expressionClient.fallbackUrl);
             }
 
-            chatMaterial = new THREE.SpriteMaterial();
+            chatMaterial = new THREE.SpriteMaterial({
+                transparent: true,
+                depthTest: false,
+                depthWrite: false,
+            });
             chatSprite = new THREE.Sprite(chatMaterial);
-            chatSprite.position.set(0, 4.5, 0);
+            chatSprite.renderOrder = 10;
+            chatSprite.frustumCulled = false;
+            chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
             chatSprite.scale.set(4, 2, 1);
+            chatSprite.visible = true;
             scene.add(chatSprite);
         }
 
         function updateChatMessage(message) {
-            state.chatText = message || DEFAULT_CHAT_MESSAGE;
+            state.chatText = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
             if (!chatMaterial) return;
 
             if (chatMaterial.map) {
@@ -382,7 +390,8 @@
                 updateMovement(delta);
             }
 
-            if (chatSprite) {
+            if (chatSprite && avatarSprite) {
+                chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
                 chatSprite.lookAt(camera.position);
             }
 
