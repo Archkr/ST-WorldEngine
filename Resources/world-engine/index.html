@@ -42,8 +42,6 @@
         const PLAYER_EYE_HEIGHT = 1.7;
         const GRAVITY = 28.0;
         const JUMP_FORCE = 12.0;
-
-        // --- World Gen Config ---
         const WORLD_SIZE = 250;
         const TERRAIN_RES = 128;
         
@@ -68,13 +66,15 @@
             isChatFocused: false,
             chatText: DEFAULT_CHAT_MESSAGE,
             chatHistory: [],
+            time: 0,
         };
 
         let camera, scene, renderer;
         let chatMaterial, chatSprite, avatarSprite;
         let expressionClient;
         let chatInput, chatForm;
-        let fireflies;
+        let fireflies, toonGradientMap;
+        let windUniforms = { time: { value: 0 } };
 
         window.WorldEngine = window.WorldEngine || {};
         window.WorldEngine.updateChatMessage = updateChatMessage;
@@ -95,30 +95,31 @@
         function init() {
             parseSettingsFromQuery();
 
+            // Generate Toon Gradient Texture
+            toonGradientMap = createToonGradient();
+
             scene = new THREE.Scene();
-            // Fantasy Sky Color
-            scene.background = new THREE.Color(0x88ccff);
-            // Soft bluish fog for depth
-            scene.fog = new THREE.FogExp2(0x88ccff, 0.015);
+            // Anime Sky Blue
+            scene.background = new THREE.Color(0x87CEEB);
+            // Soft white fog
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.012);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
             
-            // Initialize position safely
             const startY = getTerrainHeight(0, 10) + PLAYER_EYE_HEIGHT;
             camera.position.set(0, startY, 10);
 
-            // --- Fantasy Lighting ---
-            const ambientLight = new THREE.AmbientLight(0xbfd1e5, 0.6); // Soft skylight
+            // --- Lighting ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
 
-            const sunLight = new THREE.DirectionalLight(0xfff5e1, 1.5); // Warm sun
-            sunLight.position.set(80, 150, 60);
+            const sunLight = new THREE.DirectionalLight(0xfff0dd, 1.1);
+            sunLight.position.set(60, 100, 40);
             sunLight.castShadow = true;
             sunLight.shadow.mapSize.width = 2048;
             sunLight.shadow.mapSize.height = 2048;
-            // Huge shadow box for the open world
             const d = 120;
             sunLight.shadow.camera.left = -d;
             sunLight.shadow.camera.right = d;
@@ -127,8 +128,7 @@
             sunLight.shadow.bias = -0.0005;
             scene.add(sunLight);
 
-            // Magic blue rim light for style
-            const rimLight = new THREE.DirectionalLight(0x4455ff, 0.5);
+            const rimLight = new THREE.DirectionalLight(0x88ccff, 0.4);
             rimLight.position.set(-50, 20, -50);
             scene.add(rimLight);
 
@@ -136,7 +136,7 @@
             buildAvatar();
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Cap pixel ratio for perf
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -150,34 +150,47 @@
             updateInstructionsVisibility();
         }
 
-        // --- Terrain Helper Math ---
-        // Simple pseudo-random noise for terrain generation
+        function createToonGradient() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 4;
+            canvas.height = 1;
+            const context = canvas.getContext('2d');
+            const gradient = context.createLinearGradient(0, 0, 4, 0);
+            // 3 Distinct bands for Cel Shading
+            gradient.addColorStop(0, '#808080');
+            gradient.addColorStop(0.5, '#c0c0c0');
+            gradient.addColorStop(1, '#ffffff');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 4, 1);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.NearestFilter; // Sharp transitions
+            texture.minFilter = THREE.NearestFilter;
+            return texture;
+        }
+
         function getNoise(x, z) {
-            const scale1 = 0.02;
-            const scale2 = 0.05;
+            const scale1 = 0.015;
+            const scale2 = 0.03;
             const val1 = Math.sin(x * scale1) * Math.cos(z * scale1);
             const val2 = Math.sin(x * scale2 + z * scale2) * 0.5;
-            return (val1 + val2) * 4.0; // Amplitude
+            return (val1 + val2) * 5.0;
         }
 
         function getTerrainHeight(x, z) {
             const h = getNoise(x, z);
-            // Flatten center area for the "Podium/Spawn"
             const dist = Math.sqrt(x*x + z*z);
-            const podiumRadius = 15;
+            const podiumRadius = 12;
             if (dist < podiumRadius) {
-                // Smooth blend to 0 height at center
-                const factor = Math.max(0, (dist - 5) / (podiumRadius - 5));
+                const factor = Math.max(0, (dist - 4) / (podiumRadius - 4));
                 return h * factor;
             }
             return h;
         }
 
         function buildWorld() {
-            // 1. Deformable Ground Plane
+            // 1. Smooth Terrain
             const geometry = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, TERRAIN_RES, TERRAIN_RES);
             geometry.rotateX(-Math.PI / 2);
-            
             const pos = geometry.attributes.position;
             for (let i = 0; i < pos.count; i++) {
                 const x = pos.getX(i);
@@ -186,42 +199,36 @@
             }
             geometry.computeVertexNormals();
 
-            const material = new THREE.MeshStandardMaterial({
-                color: 0x5c8f38, // Vibrant grass green
-                roughness: 1.0,
-                flatShading: true // Low poly look
+            const material = new THREE.MeshToonMaterial({
+                color: 0x5faa48, // Lush green
+                gradientMap: toonGradientMap,
             });
             
             const terrain = new THREE.Mesh(geometry, material);
             terrain.receiveShadow = true;
             scene.add(terrain);
 
-            // 2. Water Plane (Lake)
+            // 2. Water
             const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE);
             waterGeo.rotateX(-Math.PI / 2);
             const waterMat = new THREE.MeshStandardMaterial({
                 color: 0x4fa4b6,
                 transparent: true,
-                opacity: 0.7,
-                roughness: 0.1,
-                metalness: 0.3
+                opacity: 0.6,
+                roughness: 0.0,
+                metalness: 0.1
             });
             const water = new THREE.Mesh(waterGeo, waterMat);
-            water.position.y = -2.5; // Water level
+            water.position.y = -3.0;
             scene.add(water);
 
-            // 3. Instanced Grass (Performance optimized)
             buildGrass();
-
-            // 4. Fantasy Trees
             buildTrees();
-
-            // 5. Fireflies
             buildFireflies();
 
-            // 6. Spawn Podium (Ruins style)
-            const podiumGeo = new THREE.CylinderGeometry(4, 4.5, 0.6, 6); // Hexagon
-            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x8c8c8c, flatShading: true });
+            // 3. Ruin Podium
+            const podiumGeo = new THREE.CylinderGeometry(4, 4.5, 0.8, 16); // Smoother cylinder
+            const podiumMat = new THREE.MeshToonMaterial({ color: 0x999999, gradientMap: toonGradientMap });
             const podium = new THREE.Mesh(podiumGeo, podiumMat);
             podium.position.set(0, 0.3, 0);
             podium.receiveShadow = true;
@@ -231,103 +238,104 @@
 
         function buildGrass() {
             const dummy = new THREE.Object3D();
-            const grassCount = 4000;
-            // Simple blade geometry (Triangle)
-            const geo = new THREE.PlaneGeometry(0.2, 0.8);
-            geo.translate(0, 0.4, 0); // Pivot at bottom
+            const grassCount = 6000; // More grass
             
-            const mat = new THREE.MeshBasicMaterial({
+            // Curved Blade shape
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0);
+            shape.quadraticCurveTo(0.1, 0.4, 0, 1); // Curve tip
+            shape.quadraticCurveTo(-0.1, 0.4, 0, 0);
+            const geo = new THREE.ShapeGeometry(shape);
+            geo.scale(0.2, 0.7, 0.2);
+
+            const mat = new THREE.MeshToonMaterial({
                 color: 0x88cc55,
+                gradientMap: toonGradientMap,
                 side: THREE.DoubleSide
             });
 
             const mesh = new THREE.InstancedMesh(geo, mat, grassCount);
             mesh.receiveShadow = true;
 
+            // Wind effect logic would go here, but sticking to static for perf stability for now
+            // Just scattering nicely
             let i = 0;
             while(i < grassCount) {
-                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
+                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.9;
+                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.9;
                 const y = getTerrainHeight(x, z);
 
-                // Don't place grass underwater or on spawn pad
-                if (y < -2.0 || (Math.abs(x) < 5 && Math.abs(z) < 5)) continue;
+                if (y < -2.5 || (Math.abs(x) < 5 && Math.abs(z) < 5)) continue;
 
                 dummy.position.set(x, y, z);
                 dummy.rotation.y = Math.random() * Math.PI;
-                // Randomize size
-                const s = 0.8 + Math.random() * 0.6;
-                dummy.scale.set(s, s, s);
+                dummy.rotation.x = (Math.random() - 0.5) * 0.2; // Slight tilt
+                dummy.scale.setScalar(0.8 + Math.random() * 0.6);
                 dummy.updateMatrix();
                 mesh.setMatrixAt(i, dummy.matrix);
                 
-                // Color variation
-                const color = new THREE.Color(0x66aa44);
-                color.offsetHSL(0, 0, Math.random() * 0.2);
+                const color = new THREE.Color(0x77bb44);
+                color.offsetHSL(0, 0, Math.random() * 0.15);
                 mesh.setColorAt(i, color);
-                
                 i++;
             }
             scene.add(mesh);
         }
 
         function buildTrees() {
-            // Stylized Pine Tree Construction
-            // We'll create one "master" tree group but we have to clone it, 
-            // which is heavy. Better to just spawn geometries.
-            // For performance in this single file, let's stick to Mesh cloning for trees (~50 count is fine).
+            // High-Fidelity "Fluffy" Trees using distorted Icosahedrons
+            // This creates a soft, cloud-like foliage look common in anime backgrounds
             
-            const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 2.5, 6);
-            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3c31, flatShading: true });
+            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 2, 8);
+            const trunkMat = new THREE.MeshToonMaterial({ color: 0x5c4033, gradientMap: toonGradientMap });
 
-            const foliageMat = new THREE.MeshStandardMaterial({ color: 0x2d5a27, flatShading: true });
-            const foliageGeo = new THREE.ConeGeometry(3.5, 4, 7);
+            // Fluffy leaves
+            const leafGeo = new THREE.IcosahedronGeometry(1, 0); // Low detail sphere, looks like a clump
+            const leafMat = new THREE.MeshToonMaterial({ color: 0x3a6b35, gradientMap: toonGradientMap });
 
             const treeCount = 60;
 
             for (let i = 0; i < treeCount; i++) {
                 const treeGroup = new THREE.Group();
-                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
+                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
+                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
                 const y = getTerrainHeight(x, z);
 
-                // Avoid water and spawn
-                if (y < -1.5 || (Math.abs(x) < 8 && Math.abs(z) < 8)) continue;
+                if (y < -1.5 || (Math.abs(x) < 9 && Math.abs(z) < 9)) continue;
 
                 // Trunk
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                trunk.position.y = 1.25;
+                trunk.position.y = 1.0;
                 trunk.castShadow = true;
                 trunk.receiveShadow = true;
                 treeGroup.add(trunk);
 
-                // Layers of foliage for that "fluffy" look
-                const scale = 1.0 + Math.random() * 0.8; // Tall trees
-                
-                // Layer 1
-                const f1 = new THREE.Mesh(foliageGeo, foliageMat);
-                f1.position.y = 3.0;
-                f1.scale.set(1.2, 1, 1.2);
-                f1.castShadow = true;
-                f1.receiveShadow = true;
-                treeGroup.add(f1);
+                // Clump 1 (Bottom)
+                const l1 = new THREE.Mesh(leafGeo, leafMat);
+                l1.position.y = 2.5;
+                l1.scale.set(2.5, 1.8, 2.5);
+                l1.castShadow = true;
+                l1.receiveShadow = true;
+                treeGroup.add(l1);
 
-                // Layer 2
-                const f2 = new THREE.Mesh(foliageGeo, foliageMat);
-                f2.position.y = 5.0;
-                f2.scale.set(1.0, 1, 1.0);
-                f2.castShadow = true;
-                f2.receiveShadow = true;
-                treeGroup.add(f2);
+                // Clump 2 (Mid)
+                const l2 = new THREE.Mesh(leafGeo, leafMat);
+                l2.position.y = 4.0;
+                l2.scale.set(2.0, 1.6, 2.0);
+                l2.castShadow = true;
+                l2.receiveShadow = true;
+                treeGroup.add(l2);
 
-                // Layer 3
-                const f3 = new THREE.Mesh(foliageGeo, foliageMat);
-                f3.position.y = 7.0;
-                f3.scale.set(0.8, 0.8, 0.8);
-                f3.castShadow = true;
-                treeGroup.add(f3);
+                // Clump 3 (Top)
+                const l3 = new THREE.Mesh(leafGeo, leafMat);
+                l3.position.y = 5.2;
+                l3.scale.set(1.4, 1.4, 1.4);
+                l3.castShadow = true;
+                l3.receiveShadow = true;
+                treeGroup.add(l3);
 
                 treeGroup.position.set(x, y, z);
+                const scale = 0.9 + Math.random() * 0.5;
                 treeGroup.scale.set(scale, scale, scale);
                 treeGroup.rotation.y = Math.random() * Math.PI;
                 
@@ -336,16 +344,16 @@
         }
 
         function buildFireflies() {
-            const count = 100;
+            const count = 150;
             const geometry = new THREE.BufferGeometry();
             const positions = [];
             const phases = [];
 
             for(let i=0; i<count; i++) {
                 positions.push(
-                    (Math.random() - 0.5) * 60,
-                    1 + Math.random() * 3,
-                    (Math.random() - 0.5) * 60
+                    (Math.random() - 0.5) * 70,
+                    1 + Math.random() * 4,
+                    (Math.random() - 0.5) * 70
                 );
                 phases.push(Math.random() * Math.PI * 2);
             }
@@ -354,11 +362,12 @@
             geometry.setAttribute('phase', new THREE.Float32BufferAttribute(phases, 1));
 
             const material = new THREE.PointsMaterial({
-                color: 0xaaffff,
-                size: 0.15,
+                color: 0xffffaa,
+                size: 0.2,
                 transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
             });
 
             fireflies = new THREE.Points(geometry, material);
@@ -373,12 +382,11 @@
             avatarSprite.scale.set(3, 3, 1);
             scene.add(avatarSprite);
 
-            // Shadow Blob
             const shadowGeo = new THREE.CircleGeometry(1.2, 32);
             const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
             const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
             shadowMesh.rotation.x = -Math.PI / 2;
-            shadowMesh.position.set(0, 0.65, 0); // On podium
+            shadowMesh.position.set(0, 0.72, 0);
             scene.add(shadowMesh);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
@@ -407,7 +415,6 @@
             renderChatBubble();
         }
 
-        // ... Reuse exact same Render/Texture functions from previous steps ...
         function renderChatBubble() {
             if (!chatMaterial) return;
             if (chatMaterial.map) chatMaterial.map.dispose();
@@ -445,7 +452,6 @@
             const measureCanvas = document.createElement('canvas');
             const mCtx = measureCanvas.getContext('2d');
             mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
-            
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
             const textBlockHeight = wrappedLines.length * lineHeight;
             const totalHeight = padding + headerHeight + textBlockHeight + padding + tailHeight;
@@ -467,13 +473,11 @@
             ctx.fillStyle = gradient;
             ctx.strokeStyle = 'rgba(100, 200, 255, 0.2)';
             ctx.lineWidth = 4;
-            
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.shadowBlur = 25;
             ctx.shadowOffsetY = 12;
 
             roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
-            
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
 
@@ -493,7 +497,6 @@
 
             ctx.font = '500 32px "Inter", sans-serif';
             ctx.fillStyle = '#f1f5f9';
-            
             let textY = startY + padding + headerHeight;
             wrappedLines.forEach(line => {
                 ctx.fillText(line, startX + padding, textY);
@@ -508,7 +511,6 @@
             return { texture, aspectRatio: canvas.width / canvas.height };
         }
         
-        // ... Helper functions remain the same ...
         function wrapText(ctx, message, maxWidth) {
             const words = message.split(/\s+/);
             let lines = [];
@@ -568,7 +570,6 @@
             }
         }
         
-        // ... PointerLock and Controls Setup ...
         function setupPointerLock(target) {
             const instructions = document.getElementById('instructions');
             const requestLock = () => target.requestPointerLock?.();
@@ -665,17 +666,18 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            state.time += 0.01;
             const time = performance.now();
             const delta = (time - state.lastTime) / 1000;
             state.lastTime = time;
 
-            // Firefly Animation
             if(fireflies) {
                 const positions = fireflies.geometry.attributes.position.array;
                 const phases = fireflies.geometry.attributes.phase.array;
-                for(let i=0; i<100; i++) {
-                    // Bob up and down
-                    positions[i*3 + 1] += Math.sin(time * 0.002 + phases[i]) * 0.01;
+                for(let i=0; i<150; i++) {
+                    // Gentle floating
+                    positions[i*3 + 1] += Math.sin(state.time + phases[i]) * 0.01;
+                    positions[i*3] += Math.cos(state.time * 0.5 + phases[i]) * 0.005;
                 }
                 fireflies.geometry.attributes.position.needsUpdate = true;
             }
@@ -693,7 +695,7 @@
         }
 
         function updateMovement(delta) {
-            const damping = 8.0; // Smoother damping
+            const damping = 8.0; 
             const acceleration = 80.0 * runtimeSettings.movementSpeed;
 
             state.velocity.x -= state.velocity.x * damping * delta;
@@ -720,7 +722,6 @@
             camera.position.z += state.velocity.z * delta;
             camera.position.y += state.velocity.y * delta;
 
-            // Terrain Collision
             const terrainH = getTerrainHeight(camera.position.x, camera.position.z);
             if (camera.position.y < terrainH + PLAYER_EYE_HEIGHT) {
                 camera.position.y = terrainH + PLAYER_EYE_HEIGHT;
