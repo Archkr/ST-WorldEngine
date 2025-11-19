@@ -338,24 +338,6 @@ function setupSettingsPanel(root) {
     const maximizeButton = root.querySelector('#world_engine_maximize');
     const maximizeIcon = maximizeButton?.querySelector('.fa-solid');
     const maximizeLabel = maximizeButton?.querySelector('.world-engine-maximize-label');
-    const maximizeOverlay = document.createElement('div');
-    const iframePlaceholder = document.createElement('div');
-    const iframeMountPoint = iframeWrapper?.parentElement;
-
-    maximizeOverlay.className = 'world-engine-maximize-overlay';
-    maximizeOverlay.setAttribute('role', 'dialog');
-    maximizeOverlay.setAttribute('aria-label', 'World Engine full view');
-    iframePlaceholder.className = 'world-engine-iframe-placeholder';
-
-    maximizeOverlay.addEventListener('click', (event) => {
-        if (event.target === maximizeOverlay) {
-            setMaximized(false);
-        }
-    });
-
-    if (!document.body.contains(maximizeOverlay)) {
-        document.body.appendChild(maximizeOverlay);
-    }
     let isMaximized = false;
 
     const updateIframeSrc = () => {
@@ -379,20 +361,7 @@ function setupSettingsPanel(root) {
     const setMaximized = (maximized) => {
         isMaximized = Boolean(maximized);
         iframeWrapper?.classList.toggle('is-maximized', isMaximized);
-        maximizeOverlay.classList.toggle('is-open', isMaximized);
         document.body.classList.toggle('world-engine-maximized', isMaximized);
-
-        if (iframeWrapper && iframeMountPoint) {
-            if (isMaximized) {
-                if (!iframePlaceholder.parentElement) {
-                    iframeMountPoint.insertBefore(iframePlaceholder, iframeWrapper);
-                }
-
-                maximizeOverlay.appendChild(iframeWrapper);
-            } else if (iframePlaceholder.parentElement) {
-                iframePlaceholder.replaceWith(iframeWrapper);
-            }
-        }
 
         if (maximizeButton) {
             maximizeButton.setAttribute('aria-pressed', String(isMaximized));
