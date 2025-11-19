@@ -10,6 +10,7 @@ const SETTINGS_ROOT_ID = 'world-engine-settings';
 const CHAT_ROLE_USER = 'user';
 const CHAT_ROLE_ASSISTANT = 'assistant';
 const CHAT_SYNC_POLL_INTERVAL = 1500;
+const CHAT_SYNC_HISTORY_LIMIT = 24;
 
 let chatIntegrationHandle = null;
 let chatPollTimer = null;
@@ -65,25 +66,19 @@ function normalizeChatMessage(message) {
     };
 }
 
-function syncLatestChatMessage(targetFrame = null) {
+function syncChatHistory(targetFrame = null) {
     const ctx = getWorldEngineContext();
     const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-    if (!chat.length) return;
+    const normalized = chat
+        .map((entry) => normalizeChatMessage(entry))
+        .filter(Boolean);
 
-    const latest = normalizeChatMessage(chat[chat.length - 1]);
-    if (!latest) return;
+    const recent = normalized.slice(-CHAT_SYNC_HISTORY_LIMIT);
+    const lastEntry = recent[recent.length - 1] || null;
+    chatSyncState.lastSignature = lastEntry?.signature ?? null;
 
-    if (chatSyncState.streamingActive && chatSyncState.streamingBuffer && latest.text.startsWith(chatSyncState.streamingBuffer)) {
-        chatSyncState.lastSignature = latest.signature;
-        return;
-    }
-
-    if (latest.signature === chatSyncState.lastSignature) return;
-
-    chatSyncState.lastSignature = latest.signature;
     broadcastChatPayload({
-        text: latest.text,
-        role: latest.role,
+        history: recent.map(({ text, role }) => ({ text, role })),
         direction: 'incoming',
     }, targetFrame);
 }
@@ -132,7 +127,7 @@ function handleMessageFinished() {
     }
     chatSyncState.streamingActive = false;
     chatSyncState.streamingBuffer = '';
-    syncLatestChatMessage();
+    syncChatHistory();
 }
 
 function pushMessageToSillyTavern(text) {
@@ -188,15 +183,18 @@ function initializeChatIntegration() {
         onStreamStarted: handleStreamStart,
         onStreamToken: handleStreamToken,
         onMessageFinished: handleMessageFinished,
-        onChatChanged: syncLatestChatMessage,
-        onHistoryChanged: resetChatSyncState,
+        onChatChanged: syncChatHistory,
+        onHistoryChanged: () => {
+            resetChatSyncState();
+            syncChatHistory();
+        },
     });
 
     if (chatPollTimer) {
         clearInterval(chatPollTimer);
     }
-    chatPollTimer = window.setInterval(syncLatestChatMessage, CHAT_SYNC_POLL_INTERVAL);
-    syncLatestChatMessage();
+    chatPollTimer = window.setInterval(syncChatHistory, CHAT_SYNC_POLL_INTERVAL);
+    syncChatHistory();
 }
 
 function teardownChatIntegration() {
@@ -261,7 +259,7 @@ async function openWorldEnginePopup() {
 
     dialog.on('load', '#world_engine_iframe', (event) => {
         sendSettingsToFrame(event.target.contentWindow, settings);
-        syncLatestChatMessage(event.target.contentWindow);
+        syncChatHistory(event.target.contentWindow);
     });
 
     dialog.on('input', '#world_engine_speed', (event) => {
@@ -438,7 +436,7 @@ function setupSettingsPanel(root) {
 
     iframe?.addEventListener('load', () => {
         sendSettingsToFrame(iframe.contentWindow, settings);
-        syncLatestChatMessage(iframe.contentWindow);
+        syncChatHistory(iframe.contentWindow);
     });
 
     root.dataset.initialized = 'true';
