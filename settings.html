@@ -1,11 +1,11 @@
 <div id="world-engine-settings" class="extension_settings extension_container world-engine-container">
-    <div class="inline-drawer is-open">
+    <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <div class="inline-drawer-title">
                 <div class="fa-solid fa-mountain-sun"></div>
                 <b>World Engine</b>
             </div>
-            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
         </div>
         <div class="inline-drawer-content world-engine-settings-panel">
             <div class="world-engine-toolbar">
@@ -15,12 +15,16 @@
                 </div>
                 <button class="world-engine-action-button menu_button" id="world_engine_maximize" type="button">
                     <span class="fa-solid fa-maximize"></span>
-                    <span class="world-engine-maximize-label" data-i18n="Maximize view">Maximize view</span>
+                    <span class="world-engine-maximize-label" data-i18n="Start world">Start world</span>
                 </button>
             </div>
 
-            <div class="world-engine-iframe-wrapper">
+            <div class="world-engine-iframe-wrapper is-hidden">
                 <iframe id="world_engine_iframe" class="world-engine-iframe" title="World Engine" allowfullscreen></iframe>
+                <button class="world-engine-overlay-button" id="world_engine_minimize" type="button">
+                    <span class="fa-solid fa-minimize"></span>
+                    <span class="world-engine-overlay-label" data-i18n="Minimize view">Minimize view</span>
+                </button>
             </div>
 
             <div class="world-engine-settings" id="world_engine_settings">
