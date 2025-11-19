@@ -105,7 +105,6 @@
 
             buildPark();
             buildAvatar();
-            recordChatMessage('assistant', state.chatText);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
@@ -147,12 +146,16 @@
             }
 
             if (data.type === 'world-engine-chat') {
-                if (data.payload?.direction !== 'outgoing') {
-                    recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
+                if (Array.isArray(data.payload?.history)) {
+                    replaceChatHistory(data.payload.history);
+                    return;
                 }
+
                 if (data.payload?.direction === 'outgoing') {
-                    recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
+                    return;
                 }
+
+                recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
             }
         }
 
@@ -292,6 +295,23 @@
             } catch (error) {
                 console.warn('[World Engine] Failed to dispatch chat message', error);
             }
+        }
+
+        function replaceChatHistory(entries = []) {
+            const normalized = Array.isArray(entries)
+                ? entries
+                    .map((entry) => ({
+                        role: entry?.role === 'user' ? 'user' : 'assistant',
+                        text: String(entry?.text ?? '').trim(),
+                    }))
+                    .filter((entry) => entry.text)
+                : [];
+
+            state.chatHistory = normalized.slice(-CHAT_HISTORY_LIMIT);
+            state.chatText = state.chatHistory[state.chatHistory.length - 1]?.text || DEFAULT_CHAT_MESSAGE;
+
+            renderChatLog();
+            renderChatBubble();
         }
 
         function buildPark() {
