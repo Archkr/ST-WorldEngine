@@ -1,155 +1,196 @@
-* {
-    box-sizing: border-box;
-}
+/* PASTE THIS INTO: Resources/world-engine/dist/styles.css 
+   REWORKED: "Aero Glass" RPG Theme for the 3D World
+*/
 
-html, body {
-    width: 100%;
-    height: 100%;
+:root {
+    --smart-theme-color: #0078d7;
+    --glass-bg: rgba(18, 18, 24, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
 }
 
 body {
+    font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
+    padding: 0;
     overflow: hidden;
-    font-family: 'Inter', system-ui, sans-serif;
-    background: linear-gradient(180deg, #87ceeb 0%, #b6e2ff 60%, #d8f1ff 100%);
+    background-color: #000;
+    width: 100vw;
+    height: 100vh;
+    user-select: none;
 }
 
-#chat_overlay {
+/* --- 0. Canvas Layout (Forces 3D to back) --- */
+canvas, #canvas, .three-canvas {
+    display: block;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 0 !important;
+    outline: none;
+}
+
+/* --- 1. RPG Speech Bubbles --- */
+/* We use broad selectors to catch whatever class the 3D engine uses */
+.chat-bubble, .bubble, .message-container, #chat-bubble {
     position: absolute;
-    bottom: 24px;
+    z-index: 10;
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 18px !important;
+    padding: 18px 24px !important;
+    
+    /* Sizing */
+    max-width: 360px !important;
+    min-width: 200px;
+    transform-origin: bottom center;
+    
+    /* Typography */
+    color: var(--text-primary) !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+    font-weight: 400;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.1) !important;
+    
+    /* Animation */
+    animation: popIn 0.4s cubic-bezier(0.19, 1, 0.22, 1) forwards, floatBubble 6s ease-in-out infinite;
+}
+
+/* The "Tail" of the speech bubble */
+.chat-bubble::after, .bubble::after, .message-container::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
     left: 50%;
     transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: min(720px, 94vw);
-    z-index: 20;
-    pointer-events: auto;
-    padding: 0 10px;
+    border-width: 10px 10px 0;
+    border-style: solid;
+    border-color: var(--glass-bg) transparent transparent transparent;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));
 }
 
-#chat_log {
-    max-height: 260px;
-    overflow-y: auto;
-    background: linear-gradient(180deg, rgba(5, 7, 17, 0.82) 0%, rgba(15, 23, 42, 0.9) 100%);
-    color: #f6f8fa;
-    padding: 16px 18px;
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.chat-log-entry {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 12px;
-    align-items: baseline;
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.chat-log-entry:last-child {
-    border-bottom: none;
-}
-
-.chat-log-label {
-    font-weight: 700;
-    font-size: 12px;
-    letter-spacing: 0.35px;
-    text-transform: uppercase;
-    color: #cdd9e5;
-}
-
-.chat-log-text {
-    color: #f8fafc;
-    font-size: 15px;
-    line-height: 1.6;
-}
-
-.chat-log-assistant .chat-log-label {
-    color: #a5d8ff;
-}
-
-.chat-log-user .chat-log-label {
-    color: #86efac;
-}
-
-#chat_form {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 10px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(14, 165, 233, 0.85));
-    padding: 12px;
-    border-radius: 14px;
-    align-items: center;
-    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.35);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-#chat_input {
-    width: 100%;
-    padding: 12px 14px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.95);
-    color: #0b1727;
-    font-size: 15px;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-
-#chat_input:focus {
-    outline: 2px solid #38bdf8;
-}
-
-#chat_form button[type="submit"] {
-    padding: 12px 16px;
-    border: none;
-    border-radius: 10px;
-    background: #0f172a;
-    color: white;
-    font-weight: 800;
-    cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
-    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.45);
-}
-
-#chat_form button[type="submit"]:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.55);
-}
-
-#instructions {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    color: white;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 20px 24px;
-    border-radius: 10px;
-    cursor: pointer;
-    z-index: 10;
-    width: min(360px, 80vw);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-}
-
-#instructions h1 {
-    margin: 0 0 8px;
-    font-size: 24px;
-    letter-spacing: 0.5px;
-}
-
-#instructions p {
-    margin: 4px 0;
-    font-size: 15px;
-}
-
-canvas {
+/* Speaker Name */
+.chat-name, .speaker-name, strong {
     display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 0;
+    color: var(--smart-theme-color) !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 800 !important;
+    margin-bottom: 6px;
+    opacity: 0.9;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+/* --- 2. Floating Capsule Input Bar --- */
+/* Broad selectors to ensure we catch the input container */
+#input-area, .controls, .input-container, footer, #ui-container, .chat-controls {
+    position: absolute !important;
+    bottom: 32px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 95%;
+    max-width: 700px;
+    
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    
+    z-index: 100 !important;
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 50px;
+    padding: 6px 12px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
+    pointer-events: auto;
+}
+
+/* Input Field */
+input[type="text"], textarea {
+    flex: 1;
+    background: transparent !important;
+    border: none !important;
+    color: #fff !important;
+    padding: 12px 16px !important;
+    font-size: 1rem !important;
+    outline: none;
+    box-shadow: none !important;
+}
+
+input[type="text"]::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Send Button */
+button, .send-btn, input[type="submit"], #send-button {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    
+    background: var(--smart-theme-color) !important;
+    border: none !important;
+    color: white !important;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    font-size: 0 !important; /* Hide default text to show icon */
+}
+
+/* Force an arrow icon */
+button::before, .send-btn::before {
+    content: '➤'; 
+    font-size: 16px;
+    font-weight: bold;
+    margin-left: -2px; /* Optical correction */
+}
+
+button:hover {
+    transform: scale(1.1);
+    background: #fff !important;
+    color: var(--smart-theme-color) !important;
+    box-shadow: 0 6px 20px rgba(255,255,255,0.2);
+}
+
+/* --- 3. Instructions Overlay --- */
+.overlay, #instructions, .help-text {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 50;
+    
+    background: linear-gradient(135deg, rgba(20,20,20,0.9), rgba(40,40,40,0.8)) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px;
+    
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.8;
+    max-width: 280px;
+    pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+/* Animations */
+@keyframes popIn {
+    0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes floatBubble {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
 }
