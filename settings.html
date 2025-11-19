@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>World Engine Settings</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div class="world-engine-container">
+        <div class="world-engine-toolbar">
+            <div>
+                <h3 data-i18n="World Engine">World Engine</h3>
+                <p class="world-engine-description" data-i18n="Open an interactive 3D view inside SillyTavern.">Open an interactive 3D view inside SillyTavern.</p>
+            </div>
+            <div class="world-engine-open-button" id="world_engine_open_in_tab">
+                <span class="fa-solid fa-arrow-up-right-from-square"></span>
+                <span data-i18n="Open in new tab">Open in new tab</span>
+            </div>
+        </div>
+        <div class="world-engine-iframe-wrapper">
+            <iframe id="world_engine_iframe" class="world-engine-iframe" title="World Engine" allowfullscreen></iframe>
+        </div>
+        <div class="world-engine-settings" id="world_engine_settings">
+            <div class="world-engine-setting-row">
+                <div class="world-engine-setting-label" data-i18n="Movement speed">Movement speed</div>
+                <div class="world-engine-setting-control">
+                    <input type="range" id="world_engine_speed" min="0.5" max="3" step="0.1">
+                    <div class="world-engine-speed-value" id="world_engine_speed_value">1.0x</div>
+                </div>
+            </div>
+            <label class="world-engine-checkbox">
+                <input type="checkbox" id="world_engine_invert_look">
+                <span data-i18n="Invert look (vertical)">Invert look (vertical)</span>
+            </label>
+            <label class="world-engine-checkbox">
+                <input type="checkbox" id="world_engine_show_instructions">
+                <span data-i18n="Show instructions overlay">Show instructions overlay</span>
+            </label>
+        </div>
+    </div>
+
+    <script type="module">
+        import { extension_settings } from '/scripts/extensions.js';
+        import { buildViewUrl, DEFAULT_SETTINGS, ensureSettings, persistSettings, sendSettingsToFrame } from './settings-utils.js';
+
+        const settings = ensureSettings(extension_settings);
+        const iframe = document.getElementById('world_engine_iframe');
+        const speedInput = document.getElementById('world_engine_speed');
+        const speedValue = document.getElementById('world_engine_speed_value');
+        const invertCheckbox = document.getElementById('world_engine_invert_look');
+        const instructionsCheckbox = document.getElementById('world_engine_show_instructions');
+        const openInTabButton = document.getElementById('world_engine_open_in_tab');
+
+        function updateIframeSrc() {
+            iframe.src = buildViewUrl(settings);
+        }
+
+        function syncControls() {
+            speedInput.value = settings.movementSpeed;
+            speedValue.textContent = `${settings.movementSpeed.toFixed(1)}x`;
+            invertCheckbox.checked = Boolean(settings.invertLook);
+            instructionsCheckbox.checked = Boolean(settings.showInstructions);
+        }
+
+        function pushSettingsToFrame() {
+            persistSettings();
+            sendSettingsToFrame(iframe?.contentWindow, settings);
+        }
+
+        speedInput.addEventListener('input', (event) => {
+            const value = Number(event.target.value) || DEFAULT_SETTINGS.movementSpeed;
+            settings.movementSpeed = Math.max(0.1, value);
+            speedValue.textContent = `${settings.movementSpeed.toFixed(1)}x`;
+            pushSettingsToFrame();
+        });
+
+        invertCheckbox.addEventListener('change', (event) => {
+            settings.invertLook = Boolean(event.target.checked);
+            pushSettingsToFrame();
+        });
+
+        instructionsCheckbox.addEventListener('change', (event) => {
+            settings.showInstructions = Boolean(event.target.checked);
+            pushSettingsToFrame();
+        });
+
+        openInTabButton.addEventListener('click', () => {
+            const url = buildViewUrl(settings);
+            window.open(url, '_blank', 'noopener');
+        });
+
+        iframe.addEventListener('load', () => {
+            sendSettingsToFrame(iframe.contentWindow, settings);
+        });
+
+        syncControls();
+        updateIframeSrc();
+    </script>
+</body>
+</html>
