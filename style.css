@@ -1,9 +1,16 @@
 .world-engine-container {
     width: 100%;
-    height: 80vh;
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.world-engine-window {
+    height: 80vh;
+}
+
+#extensions_settings .world-engine-container {
+    height: auto;
 }
 
 .world-engine-description {
@@ -17,6 +24,8 @@
     border-radius: 8px;
     overflow: hidden;
     position: relative;
+    background: var(--white_black, #fff);
+    aspect-ratio: 16 / 9;
 }
 
 .world-engine-iframe {
@@ -41,6 +50,12 @@
     border: 1px solid var(--border_color, #ccc);
     border-radius: 8px;
     background: var(--white_black, #fff);
+}
+
+.world-engine-settings-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .world-engine-setting-row {
