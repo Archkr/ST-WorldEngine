@@ -1,6 +1,38 @@
 const EXPRESSION_IMAGE_SELECTOR = '#expression-image';
 const FALLBACK_IMAGE = '../assets/expression-fallback.png';
 
+function safeGetDocument(targetWindow) {
+    if (!targetWindow || targetWindow === window) {
+        return null;
+    }
+
+    try {
+        return targetWindow.document || null;
+    } catch (error) {
+        console.debug('[World Engine] Unable to access parent document for expressions.', error);
+        return null;
+    }
+}
+
+function resolveDocumentList() {
+    const documents = new Set();
+    if (typeof document !== 'undefined') {
+        documents.add(document);
+    }
+
+    const parentDoc = safeGetDocument(window.parent);
+    if (parentDoc) {
+        documents.add(parentDoc);
+    }
+
+    const topDoc = safeGetDocument(window.top);
+    if (topDoc) {
+        documents.add(topDoc);
+    }
+
+    return Array.from(documents).filter(Boolean);
+}
+
 function resolveUrl(path) {
     return new URL(path, import.meta.url).toString();
 }
@@ -12,15 +44,17 @@ function loadTexture(loader, url) {
 }
 
 export class ExpressionTextureClient {
-    constructor({ sprite, textureLoader = null, fallbackUrl = FALLBACK_IMAGE } = {}) {
+    constructor({ sprite, textureLoader = null, fallbackUrl = FALLBACK_IMAGE, expressionSelector = EXPRESSION_IMAGE_SELECTOR } = {}) {
         this.sprite = sprite;
         this.textureLoader = textureLoader ?? (window.THREE ? new window.THREE.TextureLoader() : null);
         this.fallbackUrl = fallbackUrl ? resolveUrl(fallbackUrl) : null;
+        this.expressionSelector = expressionSelector || EXPRESSION_IMAGE_SELECTOR;
         this.imageObserver = null;
-        this.domObserver = null;
+        this.domObservers = [];
         this.currentTexture = null;
         this.currentTarget = null;
         this.lastUrl = null;
+        this.expressionDocuments = resolveDocumentList();
 
         if (!this.sprite || !this.sprite.material) {
             console.warn('[World Engine] ExpressionTextureClient requires a THREE.Sprite instance with a material.');
@@ -37,27 +71,67 @@ export class ExpressionTextureClient {
     }
 
     observeForExpressionImage() {
-        this.domObserver?.disconnect();
-        this.domObserver = new MutationObserver(() => this.attachToExpressionImage());
-        this.domObserver.observe(document.body, { childList: true, subtree: true });
+        this.expressionDocuments = resolveDocumentList();
+        this.disconnectDomObservers();
+
+        this.domObservers = this.expressionDocuments
+            .map((doc) => {
+                if (!doc?.body) return null;
+                const observer = new MutationObserver(() => this.attachToExpressionImage());
+                observer.observe(doc.body, { childList: true, subtree: true });
+                return observer;
+            })
+            .filter(Boolean);
+    }
+
+    disconnectDomObservers() {
+        this.domObservers.forEach((observer) => observer.disconnect());
+        this.domObservers = [];
+    }
+
+    findExpressionImageTarget() {
+        for (const doc of this.expressionDocuments) {
+            try {
+                const target = doc?.querySelector?.(this.expressionSelector);
+                if (target) {
+                    return target;
+                }
+            } catch (error) {
+                console.debug('[World Engine] Unable to query expression image in document.', error);
+            }
+        }
+
+        return null;
+    }
+
+    getImageSource(target) {
+        if (!target) return null;
+        return target.currentSrc || target.src || target.getAttribute('src');
     }
 
     attachToExpressionImage() {
-        const target = document.querySelector(EXPRESSION_IMAGE_SELECTOR);
-        if (!target || target === this.currentTarget) return;
+        const target = this.findExpressionImageTarget();
+        if (target === this.currentTarget) return;
+
+        if (!target) {
+            this.imageObserver?.disconnect();
+            this.currentTarget = null;
+            this.handleExpressionChange(null);
+            return;
+        }
 
         this.imageObserver?.disconnect();
         this.currentTarget = target;
         this.imageObserver = new MutationObserver(mutations => {
             for (const mutation of mutations) {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
-                    this.handleExpressionChange(target.getAttribute('src'));
+                    this.handleExpressionChange(this.getImageSource(target));
                 }
             }
         });
         this.imageObserver.observe(target, { attributes: true, attributeFilter: ['src'] });
 
-        this.handleExpressionChange(target.getAttribute('src'));
+        this.handleExpressionChange(this.getImageSource(target));
     }
 
     async handleExpressionChange(src) {
@@ -135,7 +209,7 @@ export class ExpressionTextureClient {
     dispose() {
         this.disposeTexture();
         this.imageObserver?.disconnect();
-        this.domObserver?.disconnect();
+        this.disconnectDomObservers();
         this.currentTarget = null;
     }
 }
