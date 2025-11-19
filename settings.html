@@ -1,4 +1,4 @@
-<div id="world-engine-settings" class="extension_container world-engine-container">
+<div id="world-engine-settings" class="extension_settings extension_container world-engine-container">
     <div class="inline-drawer is-open">
         <div class="inline-drawer-toggle inline-drawer-header">
             <div class="inline-drawer-title">
@@ -50,6 +50,11 @@
 
     const settings = ensureSettings(extension_settings);
     const root = document.getElementById('world-engine-settings');
+
+    if (!root) {
+        console.warn('[World Engine] Settings container not found.');
+        return;
+    }
     const iframe = root.querySelector('#world_engine_iframe');
     const speedInput = root.querySelector('#world_engine_speed');
     const speedValue = root.querySelector('#world_engine_speed_value');
