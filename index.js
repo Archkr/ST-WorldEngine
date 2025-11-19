@@ -1,10 +1,218 @@
 import { extension_settings, renderExtensionTemplateAsync } from '/scripts/extensions.js';
 import { callGenericPopup, POPUP_TYPE } from '/scripts/popup.js';
+import { eventSource, event_types } from '/script.js';
+import { registerSillyTavernIntegration, unregisterSillyTavernIntegration } from './chat-integration.js';
 import { buildViewUrl, DEFAULT_SETTINGS, ensureSettings, EXTENSION_NAME, persistSettings, sendSettingsToFrame } from './settings-utils.js';
 
 const EXTENSION_BASE_URL = new URL('.', import.meta.url);
 const SETTINGS_HTML_URL = new URL('./settings.html', EXTENSION_BASE_URL).toString();
 const SETTINGS_ROOT_ID = 'world-engine-settings';
+const CHAT_ROLE_USER = 'user';
+const CHAT_ROLE_ASSISTANT = 'assistant';
+const CHAT_SYNC_POLL_INTERVAL = 1500;
+
+let chatIntegrationHandle = null;
+let chatPollTimer = null;
+
+const chatSyncState = {
+    lastSignature: null,
+    streamingBuffer: '',
+    streamingActive: false,
+};
+
+function getWorldEngineContext() {
+    if (typeof window.getContext === 'function') {
+        return window.getContext();
+    }
+
+    if (window?.SillyTavern && typeof window.SillyTavern.getContext === 'function') {
+        return window.SillyTavern.getContext();
+    }
+
+    return null;
+}
+
+function getWorldEngineFrames() {
+    return Array.from(document.querySelectorAll('iframe.world-engine-iframe'))
+        .map((iframe) => iframe?.contentWindow)
+        .filter(Boolean);
+}
+
+function broadcastChatPayload(payload, targetFrame = null) {
+    const frames = targetFrame ? [targetFrame] : getWorldEngineFrames();
+    frames.forEach((frame) => {
+        try {
+            frame.postMessage({
+                source: EXTENSION_NAME,
+                type: 'world-engine-chat',
+                payload,
+            }, '*');
+        } catch (error) {
+            console.warn('[World Engine] Failed to deliver chat payload to frame.', error);
+        }
+    });
+}
+
+function normalizeChatMessage(message) {
+    if (!message || typeof message !== 'object') return null;
+    const text = typeof message.mes === 'string' ? message.mes.trim() : '';
+    if (!text) return null;
+    const signature = `${message.mesId ?? message.id ?? message.key ?? ''}:${text}`;
+    return {
+        text,
+        signature,
+        role: message.is_user ? CHAT_ROLE_USER : CHAT_ROLE_ASSISTANT,
+    };
+}
+
+function syncLatestChatMessage(targetFrame = null) {
+    const ctx = getWorldEngineContext();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+    if (!chat.length) return;
+
+    const latest = normalizeChatMessage(chat[chat.length - 1]);
+    if (!latest) return;
+
+    if (chatSyncState.streamingActive && chatSyncState.streamingBuffer && latest.text.startsWith(chatSyncState.streamingBuffer)) {
+        chatSyncState.lastSignature = latest.signature;
+        return;
+    }
+
+    if (latest.signature === chatSyncState.lastSignature) return;
+
+    chatSyncState.lastSignature = latest.signature;
+    broadcastChatPayload({
+        text: latest.text,
+        role: latest.role,
+        direction: 'incoming',
+    }, targetFrame);
+}
+
+function resetChatSyncState() {
+    chatSyncState.lastSignature = null;
+    chatSyncState.streamingBuffer = '';
+    chatSyncState.streamingActive = false;
+}
+
+function handleStreamStart() {
+    chatSyncState.streamingActive = true;
+    chatSyncState.streamingBuffer = '';
+}
+
+function resolveTokenText(args = []) {
+    if (!args.length) return '';
+    if (typeof args[0] === 'number') {
+        return String(args[1] ?? '');
+    }
+    if (typeof args[0] === 'object') {
+        return String(args[0]?.token ?? args[0]?.text ?? '');
+    }
+    return String(args.join(' ') || '');
+}
+
+function handleStreamToken(...args) {
+    if (!chatSyncState.streamingActive) return;
+    const tokenText = resolveTokenText(args);
+    if (!tokenText) return;
+    chatSyncState.streamingBuffer += tokenText;
+    broadcastChatPayload({
+        text: chatSyncState.streamingBuffer,
+        role: CHAT_ROLE_ASSISTANT,
+        direction: 'incoming',
+    });
+}
+
+function handleMessageFinished() {
+    if (chatSyncState.streamingBuffer) {
+        broadcastChatPayload({
+            text: chatSyncState.streamingBuffer,
+            role: CHAT_ROLE_ASSISTANT,
+            direction: 'incoming',
+        });
+    }
+    chatSyncState.streamingActive = false;
+    chatSyncState.streamingBuffer = '';
+    syncLatestChatMessage();
+}
+
+function pushMessageToSillyTavern(text) {
+    if (!text) return;
+
+    if (typeof window.send_message === 'function') {
+        window.send_message(text);
+        return;
+    }
+
+    if (window?.SillyTavern && typeof window.SillyTavern.sendMessage === 'function') {
+        window.SillyTavern.sendMessage(text);
+        return;
+    }
+
+    const textarea = document.querySelector('#send_textarea') || document.querySelector('textarea[name="send_textarea"]');
+    if (textarea) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const sendButton = document.querySelector('#send_but') || document.querySelector('#send_button') || document.querySelector('[data-send-button]');
+    if (sendButton) {
+        sendButton.click();
+        return;
+    }
+
+    const form = document.querySelector('#send_form') || textarea?.closest('form');
+    if (form) {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+}
+
+function handleFrameChatMessage(event) {
+    const { data } = event || {};
+    if (!data || data.source !== EXTENSION_NAME || data.type !== 'world-engine-chat') return;
+
+    const payload = data.payload || {};
+    const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+    if (!text || payload.direction !== 'outgoing') return;
+
+    pushMessageToSillyTavern(text);
+}
+
+function initializeChatIntegration() {
+    if (chatIntegrationHandle) return;
+
+    window.addEventListener('message', handleFrameChatMessage, false);
+    chatIntegrationHandle = registerSillyTavernIntegration({
+        eventSource,
+        eventTypes: event_types,
+        onGenerationStarted: handleStreamStart,
+        onStreamStarted: handleStreamStart,
+        onStreamToken: handleStreamToken,
+        onMessageFinished: handleMessageFinished,
+        onChatChanged: syncLatestChatMessage,
+        onHistoryChanged: resetChatSyncState,
+    });
+
+    if (chatPollTimer) {
+        clearInterval(chatPollTimer);
+    }
+    chatPollTimer = window.setInterval(syncLatestChatMessage, CHAT_SYNC_POLL_INTERVAL);
+    syncLatestChatMessage();
+}
+
+function teardownChatIntegration() {
+    if (chatPollTimer) {
+        clearInterval(chatPollTimer);
+        chatPollTimer = null;
+    }
+
+    if (chatIntegrationHandle) {
+        unregisterSillyTavernIntegration(chatIntegrationHandle, { eventSource });
+        chatIntegrationHandle = null;
+    }
+
+    window.removeEventListener('message', handleFrameChatMessage, false);
+    resetChatSyncState();
+}
 
 function getMenuContainer() {
     const selectors = ['#extensionsMenu', '#extensions-menu', '#extensionsList', '#extensionsMenuContainer', '#extensions_menu'];
@@ -53,6 +261,7 @@ async function openWorldEnginePopup() {
 
     dialog.on('load', '#world_engine_iframe', (event) => {
         sendSettingsToFrame(event.target.contentWindow, settings);
+        syncLatestChatMessage(event.target.contentWindow);
     });
 
     dialog.on('input', '#world_engine_speed', (event) => {
@@ -174,6 +383,7 @@ function setupSettingsPanel(root) {
 
     iframe?.addEventListener('load', () => {
         sendSettingsToFrame(iframe.contentWindow, settings);
+        syncLatestChatMessage(iframe.contentWindow);
     });
 
     root.dataset.initialized = 'true';
@@ -203,4 +413,5 @@ function addMenuButton() {
 jQuery(() => {
     addMenuButton();
     ensureSettingsPanel();
+    initializeChatIntegration();
 });
