@@ -44,11 +44,12 @@ function loadTexture(loader, url) {
 }
 
 export class ExpressionTextureClient {
-    constructor({ sprite, textureLoader = null, fallbackUrl = FALLBACK_IMAGE, expressionSelector = EXPRESSION_IMAGE_SELECTOR } = {}) {
+    constructor({ sprite, textureLoader = null, fallbackUrl = FALLBACK_IMAGE, expressionSelector = EXPRESSION_IMAGE_SELECTOR, onTextureApplied = null } = {}) {
         this.sprite = sprite;
         this.textureLoader = textureLoader ?? (window.THREE ? new window.THREE.TextureLoader() : null);
         this.fallbackUrl = fallbackUrl ? resolveUrl(fallbackUrl) : null;
         this.expressionSelector = expressionSelector || EXPRESSION_IMAGE_SELECTOR;
+        this.onTextureApplied = typeof onTextureApplied === 'function' ? onTextureApplied : null;
         this.imageObserver = null;
         this.domObservers = [];
         this.currentTexture = null;
@@ -168,9 +169,15 @@ export class ExpressionTextureClient {
 
     applyTexture(texture) {
         this.disposeTexture();
+        if (window.THREE && 'SRGBColorSpace' in window.THREE && texture?.colorSpace !== window.THREE.SRGBColorSpace) {
+            texture.colorSpace = window.THREE.SRGBColorSpace;
+        }
         this.sprite.material.map = texture;
         this.sprite.material.needsUpdate = true;
         this.currentTexture = texture;
+        if (this.onTextureApplied) {
+            this.onTextureApplied(texture);
+        }
     }
 
     clearSpriteMap() {
