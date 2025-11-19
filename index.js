@@ -284,11 +284,6 @@ async function openWorldEnginePopup() {
         sendSettingsToFrame(dialog.find('#world_engine_iframe')[0]?.contentWindow, settings);
     });
 
-    dialog.on('click', '#world_engine_open_in_tab', () => {
-        const url = buildViewUrl(settings);
-        window.open(url, '_blank', 'noopener');
-    });
-
     dialog.find('#world_engine_speed').val(settings.movementSpeed);
     dialog.find('#world_engine_speed_value').text(`${settings.movementSpeed.toFixed(1)}x`);
     dialog.find('#world_engine_invert_look').prop('checked', settings.invertLook);
@@ -335,11 +330,33 @@ function setupSettingsPanel(root) {
 
     const settings = getSettings();
     const iframe = root.querySelector('#world_engine_iframe');
+    const iframeWrapper = root.querySelector('.world-engine-iframe-wrapper');
     const speedInput = root.querySelector('#world_engine_speed');
     const speedValue = root.querySelector('#world_engine_speed_value');
     const invertCheckbox = root.querySelector('#world_engine_invert_look');
     const instructionsCheckbox = root.querySelector('#world_engine_show_instructions');
-    const openInTabButton = root.querySelector('#world_engine_open_in_tab');
+    const maximizeButton = root.querySelector('#world_engine_maximize');
+    const maximizeIcon = maximizeButton?.querySelector('.fa-solid');
+    const maximizeLabel = maximizeButton?.querySelector('.world-engine-maximize-label');
+    const maximizeOverlay = document.createElement('div');
+    const iframePlaceholder = document.createElement('div');
+    const iframeMountPoint = iframeWrapper?.parentElement;
+
+    maximizeOverlay.className = 'world-engine-maximize-overlay';
+    maximizeOverlay.setAttribute('role', 'dialog');
+    maximizeOverlay.setAttribute('aria-label', 'World Engine full view');
+    iframePlaceholder.className = 'world-engine-iframe-placeholder';
+
+    maximizeOverlay.addEventListener('click', (event) => {
+        if (event.target === maximizeOverlay) {
+            setMaximized(false);
+        }
+    });
+
+    if (!document.body.contains(maximizeOverlay)) {
+        document.body.appendChild(maximizeOverlay);
+    }
+    let isMaximized = false;
 
     const updateIframeSrc = () => {
         if (iframe) {
@@ -359,6 +376,38 @@ function setupSettingsPanel(root) {
         sendSettingsToFrame(iframe?.contentWindow, settings);
     };
 
+    const setMaximized = (maximized) => {
+        isMaximized = Boolean(maximized);
+        iframeWrapper?.classList.toggle('is-maximized', isMaximized);
+        maximizeOverlay.classList.toggle('is-open', isMaximized);
+        document.body.classList.toggle('world-engine-maximized', isMaximized);
+
+        if (iframeWrapper && iframeMountPoint) {
+            if (isMaximized) {
+                if (!iframePlaceholder.parentElement) {
+                    iframeMountPoint.insertBefore(iframePlaceholder, iframeWrapper);
+                }
+
+                maximizeOverlay.appendChild(iframeWrapper);
+            } else if (iframePlaceholder.parentElement) {
+                iframePlaceholder.replaceWith(iframeWrapper);
+            }
+        }
+
+        if (maximizeButton) {
+            maximizeButton.setAttribute('aria-pressed', String(isMaximized));
+        }
+
+        if (maximizeIcon) {
+            maximizeIcon.classList.toggle('fa-maximize', !isMaximized);
+            maximizeIcon.classList.toggle('fa-minimize', isMaximized);
+        }
+
+        if (maximizeLabel) {
+            maximizeLabel.textContent = isMaximized ? 'Exit maximize' : 'Maximize view';
+        }
+    };
+
     speedInput?.addEventListener('input', (event) => {
         const value = Number(event.target.value) || DEFAULT_SETTINGS.movementSpeed;
         settings.movementSpeed = Math.max(0.1, value);
@@ -376,9 +425,12 @@ function setupSettingsPanel(root) {
         pushSettingsToFrame();
     });
 
-    openInTabButton?.addEventListener('click', () => {
-        const url = buildViewUrl(settings);
-        window.open(url, '_blank', 'noopener');
+    maximizeButton?.addEventListener('click', () => setMaximized(!isMaximized));
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && isMaximized) {
+            setMaximized(false);
+        }
     });
 
     iframe?.addEventListener('load', () => {
@@ -389,6 +441,7 @@ function setupSettingsPanel(root) {
     root.dataset.initialized = 'true';
     syncControls();
     updateIframeSrc();
+    setMaximized(false);
 }
 
 function addMenuButton() {
