@@ -17,7 +17,7 @@
         <div id="chat_log" aria-live="polite"></div>
         <form id="chat_form" autocomplete="off">
             <input id="chat_input" name="chat_input" type="text" placeholder="Type a message..." inputmode="text" maxlength="1000">
-            <button type="submit" aria-label="Send Message">Send</button>
+            <button type="submit" aria-label="Send Message"></button>
         </form>
     </div>
 
@@ -38,14 +38,13 @@
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
         const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.8, 0); 
         const CHAT_HISTORY_LIMIT = 12;
-        const CHAT_WORLD_WIDTH = 7;
+        const CHAT_WORLD_WIDTH = 8; // Slightly wider for better readability
         const PLAYER_EYE_HEIGHT = 1.7;
         const GRAVITY = 32.0;
         const JUMP_FORCE = 13.0;
         
         const WORLD_SIZE = 250;
         
-        // Shared uniforms for the wind shader
         const globalUniforms = {
             time: { value: 0 },
             windSpeed: { value: 1.5 },
@@ -102,7 +101,6 @@
             parseSettingsFromQuery();
 
             scene = new THREE.Scene();
-            // Ghibli Blue Sky
             scene.background = new THREE.Color(0x87CEEB);
             scene.fog = new THREE.FogExp2(0x87CEEB, 0.015);
 
@@ -110,7 +108,6 @@
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
 
-            // --- Lighting Setup ---
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
             scene.add(ambientLight);
 
@@ -131,11 +128,9 @@
             rimLight.position.set(-50, 30, -50);
             scene.add(rimLight);
 
-            // --- Build Order ---
             buildAvatar();
             buildWorld();
             
-            // Spawn Player on the bank
             const spawnZ = 20;
             const spawnY = getTerrainHeight(0, spawnZ);
             camera.position.set(0, spawnY + PLAYER_EYE_HEIGHT, spawnZ);
@@ -156,100 +151,57 @@
             updateInstructionsVisibility();
         }
 
-        // --- CUSTOM SHADERS (WIND) ---
-        
+        // --- SHADERS ---
         function makeWindMaterial(parameters) {
             const material = new THREE.MeshStandardMaterial(parameters);
-            
             material.onBeforeCompile = (shader) => {
                 shader.uniforms.time = globalUniforms.time;
                 shader.uniforms.windStrength = globalUniforms.windStrength;
-                
-                shader.vertexShader = `
-                    uniform float time;
-                    uniform float windStrength;
-                    ${shader.vertexShader}
-                `;
-                
-                shader.vertexShader = shader.vertexShader.replace(
-                    '#include <begin_vertex>',
-                    `
-                    #include <begin_vertex>
+                shader.vertexShader = `uniform float time; uniform float windStrength; ${shader.vertexShader}`;
+                shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
+                    `#include <begin_vertex>
                     float mask = max(0.0, position.y);
                     float sway = sin(time * 1.5 + position.x * 0.5 + position.z * 0.5) * 0.15;
                     float sway2 = cos(time * 2.1 + position.x * 0.2) * 0.1;
                     transformed.x += (sway + sway2) * mask * windStrength;
-                    transformed.z += (sway - sway2) * mask * windStrength;
-                    `
+                    transformed.z += (sway - sway2) * mask * windStrength;`
                 );
             };
-            
             material.customProgramCacheKey = () => 'wind_material';
             return material;
         }
 
-        // --- TERRAIN GENERATION ---
-
+        // --- TERRAIN ---
         function getTerrainHeight(x, z) {
             const base = (Math.sin(x * 0.04) + Math.cos(z * 0.04)) * 2.0;
-            
-            // River Path: meandering along X
-            // We want the river to be at Z = sin(x)*...
             const riverCenterZ = Math.sin(x * 0.05) * 10.0;
             const distToRiver = Math.abs(z - riverCenterZ);
-            
-            let h = base + 2.0; // Land height
-            
-            // Carve River
+            let h = base + 2.0;
             if (distToRiver < 15.0) {
-                // Deep smooth carve
                 const depth = Math.cos((distToRiver / 15.0) * (Math.PI / 2)) * 7.0;
                 h -= depth;
             }
-            
             return h;
         }
 
         function buildWorld() {
-            // 1. Terrain
             const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 128, 128);
             geo.rotateX(-Math.PI / 2);
-            
             const pos = geo.attributes.position;
-            for (let i = 0; i < pos.count; i++) {
-                const x = pos.getX(i);
-                const z = pos.getZ(i);
-                pos.setY(i, getTerrainHeight(x, z));
-            }
+            for (let i = 0; i < pos.count; i++) pos.setY(i, getTerrainHeight(pos.getX(i), pos.getZ(i)));
             geo.computeVertexNormals();
-
-            const groundMat = new THREE.MeshStandardMaterial({ 
-                color: 0x5ba635, 
-                roughness: 1.0,
-                flatShading: false 
-            });
-            const terrain = new THREE.Mesh(geo, groundMat);
+            const terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x5ba635, roughness: 1.0 }));
             terrain.receiveShadow = true;
             scene.add(terrain);
 
-            // 2. Water - Raised Level
-            const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE);
-            waterGeo.rotateX(-Math.PI / 2);
-            const waterMat = new THREE.MeshStandardMaterial({
-                color: 0x4fa4b6,
-                transparent: true,
-                opacity: 0.75,
-                roughness: 0.1,
-                metalness: 0.1
-            });
-            const water = new THREE.Mesh(waterGeo, waterMat);
-            water.position.y = -1.0; // Raised from -1.5 to fill the channel
+            const water = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE), new THREE.MeshStandardMaterial({ color: 0x4fa4b6, transparent: true, opacity: 0.75, roughness: 0.1, metalness: 0.1 }));
+            water.rotateX(-Math.PI / 2);
+            water.position.y = -1.0;
             scene.add(water);
 
-            // 3. Scenery
             buildGrass();
             buildTrees();
-            buildRuins(); // This now builds the bridge
+            buildRuins();
             buildFireflies();
         }
 
@@ -257,185 +209,101 @@
             const count = 15000;
             const dummy = new THREE.Object3D();
             const shape = new THREE.Shape();
-            shape.moveTo(-0.05, 0);
-            shape.lineTo(0.05, 0);
-            shape.lineTo(0, 0.6);
-            shape.lineTo(-0.05, 0);
-            const geo = new THREE.ShapeGeometry(shape);
-            const mat = makeWindMaterial({ color: 0x88cc44, side: THREE.DoubleSide });
-            const mesh = new THREE.InstancedMesh(geo, mat, count);
+            shape.moveTo(-0.05, 0); shape.lineTo(0.05, 0); shape.lineTo(0, 0.6); shape.lineTo(-0.05, 0);
+            const mesh = new THREE.InstancedMesh(new THREE.ShapeGeometry(shape), makeWindMaterial({ color: 0x88cc44, side: THREE.DoubleSide }), count);
             mesh.receiveShadow = true;
-
             let i = 0;
             while(i < count) {
-                const x = (Math.random() - 0.5) * 180;
-                const z = (Math.random() - 0.5) * 180;
-                const y = getTerrainHeight(x, z);
-
-                // Don't spawn underwater
+                const x = (Math.random() - 0.5) * 180, z = (Math.random() - 0.5) * 180, y = getTerrainHeight(x, z);
                 if (y > -0.8) {
                     dummy.position.set(x, y, z);
-                    dummy.rotation.y = Math.random() * Math.PI;
-                    dummy.rotation.x = (Math.random() - 0.5) * 0.3;
-                    dummy.scale.setScalar(0.8 + Math.random() * 0.8);
+                    dummy.rotation.set((Math.random()-0.5)*0.3, Math.random()*Math.PI, 0);
+                    dummy.scale.setScalar(0.8 + Math.random()*0.8);
                     dummy.updateMatrix();
                     mesh.setMatrixAt(i, dummy.matrix);
-                    const col = new THREE.Color(0x77bb44);
-                    col.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
-                    mesh.setColorAt(i, col);
-                    i++;
+                    mesh.setColorAt(i++, new THREE.Color(0x77bb44).offsetHSL(0, 0, (Math.random()-0.5)*0.1));
                 }
             }
             scene.add(mesh);
         }
 
         function buildTrees() {
-            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 2.5, 7);
             const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
-            const leafGeo = new THREE.IcosahedronGeometry(1, 0);
             const leafMat = makeWindMaterial({ color: 0x2d6e32, flatShading: true });
-            const count = 70;
-            
-            for(let i=0; i<count; i++) {
-                const x = (Math.random() - 0.5) * 190;
-                const z = (Math.random() - 0.5) * 190;
-                const y = getTerrainHeight(x, z);
-
-                // Avoid water and bridge area (X=10, Z=5 roughly)
-                if (y < -0.2 || (Math.abs(x-10) < 10 && Math.abs(z-5) < 10)) continue;
-
+            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 2.5, 7);
+            const leafGeo = new THREE.IcosahedronGeometry(1, 0);
+            for(let i=0; i<70; i++) {
+                const x = (Math.random()-0.5)*190, z = (Math.random()-0.5)*190, y = getTerrainHeight(x, z);
+                if (y < -0.2 || (Math.abs(x-10)<10 && Math.abs(z-5)<10)) continue;
                 const group = new THREE.Group();
                 group.position.set(x, y, z);
+                
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                trunk.position.y = 1.25;
-                trunk.castShadow = true;
-                trunk.receiveShadow = true;
-                group.add(trunk);
-
+                trunk.position.y = 1.25; trunk.castShadow = true; group.add(trunk);
+                
                 for(let L=0; L<3; L++) {
                     const f = new THREE.Mesh(leafGeo, leafMat);
                     f.position.y = 3.0 + (L * 1.8);
                     const s = 2.2 - (L * 0.4);
                     f.scale.set(s, 1.5, s);
-                    f.castShadow = true;
-                    f.receiveShadow = true;
-                    group.add(f);
+                    f.castShadow = true; group.add(f);
                 }
-
-                const scale = 1.0 + Math.random() * 0.6;
-                group.scale.set(scale, scale, scale);
-                group.rotation.y = Math.random() * Math.PI;
+                group.scale.setScalar(1.0 + Math.random()*0.6);
+                group.rotation.y = Math.random()*Math.PI;
                 scene.add(group);
             }
         }
 
         function buildRuins() {
-            const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
+            const mat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
+            const bridgeX = 10, bridgeZ = 5, bridgeY = 1.0;
             
-            // Bridge Logic:
-            // We want to cross the river. River flows X, varying Z.
-            // Let's pick a spot where the river is. At x=10.
-            // River center Z = sin(10*0.05)*10 ~= 4.8.
-            // So we build a bridge at x=10, spanning Z.
-            
-            const bridgeX = 10;
-            const bridgeZ = 5; // Approx river center
-            const bridgeY = 1.0; // Height above water (-1.0)
+            const createSeg = () => {
+                const g = new THREE.Group();
+                const f = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, 4), mat);
+                f.castShadow = true; g.add(f);
+                const post = new THREE.BoxGeometry(0.2, 1, 0.2);
+                [ [0.9,1.8], [-0.9,1.8], [0.9,-1.8], [-0.9,-1.8] ].forEach(([x,z]) => {
+                    const p = new THREE.Mesh(post, mat); p.position.set(x, 0.5, z); g.add(p);
+                });
+                return g;
+            };
 
-            // Left Segment (Ramp up)
-            const segmentL = createBridgeSegment(woodMat);
-            segmentL.position.set(bridgeX, bridgeY, bridgeZ - 6);
-            segmentL.lookAt(bridgeX, bridgeY + 2, bridgeZ); // Aim up
-            scene.add(segmentL);
+            const L = createSeg(); L.position.set(bridgeX, bridgeY, bridgeZ - 6); L.lookAt(bridgeX, bridgeY+2, bridgeZ); scene.add(L);
+            const R = createSeg(); R.position.set(bridgeX, bridgeY, bridgeZ + 6); R.lookAt(bridgeX, bridgeY+2, bridgeZ); scene.add(R);
+            
+            const d = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 1), mat);
+            d.position.set(bridgeX, -0.8, bridgeZ); d.rotation.set(0.2, 0.5, 0.1); scene.add(d);
 
-            // Right Segment (Ramp up)
-            const segmentR = createBridgeSegment(woodMat);
-            segmentR.position.set(bridgeX, bridgeY, bridgeZ + 6);
-            segmentR.lookAt(bridgeX, bridgeY + 2, bridgeZ); // Aim up
-            scene.add(segmentR);
-
-            // Broken Middle pieces
-            const debris = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 1), woodMat);
-            debris.position.set(bridgeX, -0.8, bridgeZ); // In water
-            debris.rotation.set(0.2, 0.5, 0.1);
-            scene.add(debris);
-            
-            const debris2 = debris.clone();
-            debris2.position.set(bridgeX + 1, -0.9, bridgeZ + 1);
-            debris2.rotation.set(-0.2, 0.1, 0.5);
-            scene.add(debris2);
-
-            // Spawn Podium
-            const podiumGeo = new THREE.CylinderGeometry(2.5, 3, 0.4, 8);
-            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
-            const podium = new THREE.Mesh(podiumGeo, podiumMat);
-            
-            // Place podium on the bank
-            const spawnZ = 20;
-            const spawnH = getTerrainHeight(0, spawnZ);
-            podium.position.set(0, spawnH + 0.2, spawnZ);
-            podium.receiveShadow = true;
-            scene.add(podium);
-        }
-
-        function createBridgeSegment(material) {
-            const group = new THREE.Group();
-            const plankGeo = new THREE.BoxGeometry(2, 0.2, 4); // Wide X, Length Z
-            
-            const floor = new THREE.Mesh(plankGeo, material);
-            floor.castShadow = true;
-            floor.receiveShadow = true;
-            group.add(floor);
-            
-            // Rails
-            const postGeo = new THREE.BoxGeometry(0.2, 1, 0.2);
-            const railGeo = new THREE.BoxGeometry(0.2, 0.2, 4);
-            
-            const p1 = new THREE.Mesh(postGeo, material); p1.position.set(0.9, 0.5, 1.8); group.add(p1);
-            const p2 = new THREE.Mesh(postGeo, material); p2.position.set(-0.9, 0.5, 1.8); group.add(p2);
-            const p3 = new THREE.Mesh(postGeo, material); p3.position.set(0.9, 0.5, -1.8); group.add(p3);
-            const p4 = new THREE.Mesh(postGeo, material); p4.position.set(-0.9, 0.5, -1.8); group.add(p4);
-            
-            const r1 = new THREE.Mesh(railGeo, material); r1.position.set(0.9, 1.0, 0); group.add(r1);
-            const r2 = new THREE.Mesh(railGeo, material); r2.position.set(-0.9, 1.0, 0); group.add(r2);
-
-            return group;
+            const podium = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 3, 0.4, 8), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+            const spawnH = getTerrainHeight(0, 20);
+            podium.position.set(0, spawnH + 0.2, 20); podium.receiveShadow = true; scene.add(podium);
         }
 
         function buildFireflies() {
-            const count = 150;
-            const geo = new THREE.BufferGeometry();
-            const pos = [];
-            const phase = [];
+            const count = 150, pos = [], phase = [];
             for(let i=0; i<count; i++) {
-                pos.push((Math.random()-0.5)*100, 1 + Math.random()*4, (Math.random()-0.5)*100);
-                phase.push(Math.random() * Math.PI * 2);
+                pos.push((Math.random()-0.5)*100, 1+Math.random()*4, (Math.random()-0.5)*100);
+                phase.push(Math.random()*Math.PI*2);
             }
+            const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
             geo.setAttribute('phase', new THREE.Float32BufferAttribute(phase, 1));
-            const mat = new THREE.PointsMaterial({
-                color: 0xaaffaa, size: 0.25, transparent: true, opacity: 0.8,
-                blending: THREE.AdditiveBlending, depthWrite: false
-            });
+            const mat = new THREE.PointsMaterial({ color: 0xaaffaa, size: 0.25, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
             fireflies = new THREE.Points(geo, mat);
             scene.add(fireflies);
         }
 
         function buildAvatar() {
-            const textureLoader = new THREE.TextureLoader();
-            const material = new THREE.SpriteMaterial({ transparent: true });
-            avatarSprite = new THREE.Sprite(material);
+            const loader = new THREE.TextureLoader();
+            avatarSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
             avatarSprite.scale.set(3, 3, 1);
             scene.add(avatarSprite);
+            
+            const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.0, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 }));
+            shadow.rotation.x = -Math.PI/2; shadow.position.y = -1.45; avatarSprite.add(shadow);
 
-            const shadowGeo = new THREE.CircleGeometry(1.0, 32);
-            const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
-            const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
-            shadowMesh.rotation.x = -Math.PI / 2;
-            shadowMesh.position.y = -1.45;
-            avatarSprite.add(shadowMesh);
-
-            expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
+            expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader: loader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
 
             chatMaterial = new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
@@ -445,26 +313,22 @@
             scene.add(chatSprite);
         }
 
-        // --- Chat System ---
-        function updateChatMessage(message, role = 'assistant') { recordChatMessage(role, message); }
+        // --- CHAT SYSTEM (NATIVE LOOK) ---
+        function updateChatMessage(message, role='assistant') { recordChatMessage(role, message); }
         function recordChatMessage(role, message) {
-            const normalizedRole = role === 'user' ? 'user' : 'assistant';
-            const text = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
-            const history = state.chatHistory;
-            history.push({ role: normalizedRole, text });
-            if (history.length > CHAT_HISTORY_LIMIT) history.shift();
+            state.chatHistory.push({ role: role==='user'?'user':'assistant', text: String(message||'').trim() });
+            if (state.chatHistory.length > CHAT_HISTORY_LIMIT) state.chatHistory.shift();
             renderChatBubble();
         }
 
         function renderChatBubble() {
             if (!chatMaterial) return;
             if (chatMaterial.map) chatMaterial.map.dispose();
-            const assistantMsgs = state.chatHistory.filter(m => m.role === 'assistant');
-            const displayEntry = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
-            const entries = displayEntry ? [displayEntry] : (state.chatHistory.length === 0 ? [{role:'assistant', text:DEFAULT_CHAT_MESSAGE}] : []);
+            const entries = state.chatHistory.filter(m => m.role === 'assistant').slice(-1);
             if (entries.length === 0) { chatSprite.visible = false; return; }
+            
             chatSprite.visible = true;
-            const { texture, aspectRatio } = createChatTexture(entries);
+            const { texture, aspectRatio } = createChatTexture(entries[0]);
             chatMaterial.map = texture;
             chatMaterial.needsUpdate = true;
             const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
@@ -472,64 +336,71 @@
             chatSprite.userData.height = newHeight;
         }
 
-        function createChatTexture(historyEntries) {
-            const entry = historyEntries[0];
-            const padding = 40, headerHeight = 60, lineHeight = 44, canvasWidth = 1024;
-            const maxWidth = canvasWidth - (padding * 2);
-            const tailHeight = 30;
+        function createChatTexture(entry) {
+            const padding=60, headerHeight=60, lineHeight=52, canvasWidth=2048; // High Res
+            const maxWidth = canvasWidth - (padding*2);
+            const tailHeight = 40;
+
             const mCanvas = document.createElement('canvas');
             const mCtx = mCanvas.getContext('2d');
-            mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
+            mCtx.font = '500 42px "Inter", "Segoe UI", sans-serif'; // Larger font for High DPI
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
             const totalHeight = padding + headerHeight + (wrappedLines.length * lineHeight) + padding + tailHeight;
+
             const canvas = document.createElement('canvas');
             canvas.width = canvasWidth;
-            canvas.height = Math.max(256, totalHeight);
+            canvas.height = Math.max(300, totalHeight);
             const ctx = canvas.getContext('2d');
-            const bubbleHeight = canvas.height - tailHeight - 20;
-            const startX = 10, startY = 10; 
-            const gradient = ctx.createLinearGradient(0, 0, 0, bubbleHeight);
-            gradient.addColorStop(0, 'rgba(30, 40, 60, 0.95)');
-            gradient.addColorStop(1, 'rgba(15, 20, 30, 0.98)');
-            ctx.fillStyle = gradient;
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+            const bubbleHeight = canvas.height - tailHeight - 30;
+
+            // --- SillyTavern Dark Theme Style ---
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)'; // Dark gray background
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; // Subtle border
             ctx.lineWidth = 4;
-            ctx.shadowColor = 'rgba(0,0,0,0.7)';
-            ctx.shadowBlur = 25;
-            ctx.shadowOffsetY = 15;
-            roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
-            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+            
+            // Soft Shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 40;
+            ctx.shadowOffsetY = 20;
+
+            roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 50, true, true);
+            ctx.shadowColor = 'transparent';
+
+            // Tail
             ctx.beginPath();
             const tailX = canvas.width / 2;
-            const tailYPos = startY + bubbleHeight;
-            ctx.moveTo(tailX - 25, tailYPos);
-            ctx.lineTo(tailX, tailYPos + tailHeight);
-            ctx.lineTo(tailX + 25, tailYPos);
-            ctx.fillStyle = 'rgba(15, 20, 30, 0.98)';
+            const tailY = 20 + bubbleHeight;
+            ctx.moveTo(tailX - 30, tailY);
+            ctx.lineTo(tailX, tailY + tailHeight);
+            ctx.lineTo(tailX + 30, tailY);
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)';
             ctx.fill();
-            ctx.font = 'bold 28px "Inter", sans-serif';
-            ctx.fillStyle = '#60a5fa';
+            // Draw border line over tail connection if needed, but simple fill is cleaner
+
+            // Name
+            ctx.font = 'bold 38px "Inter", sans-serif';
+            ctx.fillStyle = '#0078d7'; // Smart Theme Blue (Accent)
             ctx.textBaseline = 'top';
-            ctx.fillText("ASSISTANT", startX + padding, startY + padding);
-            ctx.font = '500 32px "Inter", sans-serif';
-            ctx.fillStyle = '#f1f5f9';
-            let textY = startY + padding + headerHeight;
-            wrappedLines.forEach(line => { ctx.fillText(line, startX + padding, textY); textY += lineHeight; });
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-            texture.minFilter = THREE.LinearFilter;
-            texture.magFilter = THREE.LinearFilter;
-            texture.needsUpdate = true;
-            return { texture, aspectRatio: canvas.width / canvas.height };
+            ctx.fillText("ASSISTANT", padding + 20, padding + 20);
+
+            // Text
+            ctx.font = '400 42px "Inter", "Segoe UI", sans-serif';
+            ctx.fillStyle = '#e0e0e0'; // Off-white text
+            let textY = padding + 20 + headerHeight;
+            wrappedLines.forEach(line => { ctx.fillText(line, padding + 20, textY); textY += lineHeight; });
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            return { texture: tex, aspectRatio: canvas.width / canvas.height };
         }
-        
+
         function wrapText(ctx, message, maxWidth) {
             const words = message.split(/\s+/);
-            let lines = [];
-            let currentLine = words[0];
+            let lines = [], currentLine = words[0];
             for (let i = 1; i < words.length; i++) {
-                const width = ctx.measureText(currentLine + " " + words[i]).width;
-                if (width < maxWidth) currentLine += " " + words[i];
+                if (ctx.measureText(currentLine + " " + words[i]).width < maxWidth) currentLine += " " + words[i];
                 else { lines.push(currentLine); currentLine = words[i]; }
             }
             lines.push(currentLine);
@@ -541,101 +412,91 @@
             if (fill) ctx.fill(); if (stroke) ctx.stroke();
         }
 
-        // --- System ---
+        // --- SYSTEM ---
         function parseSettingsFromQuery() {
-            const params = new URLSearchParams(window.location.search);
+            const p = new URLSearchParams(window.location.search);
             applySettings({
-                movementSpeed: Number(params.get('moveSpeed')) || 1.0,
-                invertLook: params.get('invertLook') === 'true',
-                showInstructions: params.get('showInstructions') === 'true',
+                movementSpeed: Number(p.get('moveSpeed'))||1,
+                invertLook: p.get('invertLook')==='true',
+                showInstructions: p.get('showInstructions')==='true'
             });
         }
 
-        function applySettings(newSettings = {}) {
-            runtimeSettings.movementSpeed = Math.max(0.1, Number(newSettings.movementSpeed ?? runtimeSettings.movementSpeed));
-            runtimeSettings.invertLook = Boolean(newSettings.invertLook ?? runtimeSettings.invertLook);
-            runtimeSettings.showInstructions = Boolean(newSettings.showInstructions ?? runtimeSettings.showInstructions);
+        function applySettings(s) {
+            runtimeSettings.movementSpeed = Math.max(0.1, Number(s.movementSpeed??1));
+            runtimeSettings.invertLook = Boolean(s.invertLook??false);
+            runtimeSettings.showInstructions = Boolean(s.showInstructions??true);
             updateInstructionsVisibility();
         }
 
-        function handleIncomingMessage(event) {
-            if (event.data?.source !== 'world-engine') return;
-            if (event.data.type === 'world-engine-settings') applySettings(event.data.payload);
-            if (event.data.type === 'world-engine-chat') {
-                if (Array.isArray(event.data.payload?.history)) replaceChatHistory(event.data.payload.history);
-                else if (event.data.payload?.direction !== 'outgoing') recordChatMessage(event.data.payload?.role || 'assistant', event.data.payload?.text);
+        function handleIncomingMessage(e) {
+            if (e.data?.source !== 'world-engine') return;
+            if (e.data.type === 'world-engine-settings') applySettings(e.data.payload);
+            if (e.data.type === 'world-engine-chat') {
+                if (Array.isArray(e.data.payload?.history)) replaceChatHistory(e.data.payload.history);
+                else if (e.data.payload?.direction !== 'outgoing') recordChatMessage(e.data.payload?.role||'assistant', e.data.payload?.text);
             }
         }
-        
+
+        function replaceChatHistory(entries=[]) {
+            state.chatHistory = (Array.isArray(entries) ? entries : []).map(e => ({
+                role: e?.role==='user'?'user':'assistant', text: String(e?.text||'').trim()
+            })).filter(e=>e.text).slice(-CHAT_HISTORY_LIMIT);
+            renderChatBubble();
+        }
+
         function setupPointerLock(target) {
-            const requestLock = () => target.requestPointerLock?.();
-            document.getElementById('instructions')?.addEventListener('click', requestLock);
-            target.addEventListener('click', requestLock);
-            document.addEventListener('pointerlockchange', () => {
-                state.isLocked = document.pointerLockElement === target;
-                updateInstructionsVisibility();
-            });
+            const req = () => target.requestPointerLock?.();
+            document.getElementById('instructions')?.addEventListener('click', req);
+            target.addEventListener('click', req);
+            document.addEventListener('pointerlockchange', () => { state.isLocked=document.pointerLockElement===target; updateInstructionsVisibility(); });
             document.addEventListener('mousemove', (e) => {
-                if (!state.isLocked) return;
+                if(!state.isLocked) return;
                 state.yaw -= e.movementX * 0.0025;
-                state.pitch -= e.movementY * 0.0025 * (runtimeSettings.invertLook ? -1 : 1);
+                state.pitch -= e.movementY * 0.0025 * (runtimeSettings.invertLook?-1:1);
                 state.pitch = Math.max(-1.5, Math.min(1.5, state.pitch));
                 camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
             });
         }
-        
+
         function setupChatUi() {
             chatInput = document.getElementById('chat_input');
             chatForm = document.getElementById('chat_form');
             chatForm?.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const text = chatInput?.value?.trim();
-                if (text) { dispatchChatMessage(text); chatInput.value = ''; chatInput.blur(); }
+                e.preventDefault(); const text = chatInput?.value?.trim();
+                if(text) { dispatchChatMessage(text); chatInput.value=''; chatInput.blur(); }
             });
-            chatInput?.addEventListener('focus', () => { state.isChatFocused = true; state.moveForward=state.moveBackward=state.moveLeft=state.moveRight=false; if(document.pointerLockElement) document.exitPointerLock(); });
-            chatInput?.addEventListener('blur', () => state.isChatFocused = false);
+            chatInput?.addEventListener('focus', () => { state.isChatFocused=true; if(document.pointerLockElement) document.exitPointerLock(); });
+            chatInput?.addEventListener('blur', () => state.isChatFocused=false);
             renderChatBubble();
         }
 
         function setupEvents() {
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
-            document.addEventListener('keydown', (e) => handleKey(e, true));
-            document.addEventListener('keyup', (e) => handleKey(e, false));
+            window.addEventListener('resize', () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
+            document.addEventListener('keydown', e => handleKey(e, true));
+            document.addEventListener('keyup', e => handleKey(e, false));
         }
-        
+
         function handleKey(e, pressed) {
-            if (state.isChatFocused) {
-                if(e.code === 'Enter' && pressed) chatInput.focus();
-                if(e.code === 'Escape' && pressed) chatInput.blur();
+            if(state.isChatFocused) {
+                if(e.code==='Enter' && pressed) chatInput.focus();
+                if(e.code==='Escape' && pressed) chatInput.blur();
                 return;
             }
             switch(e.code) {
-                case 'ArrowUp': case 'KeyW': state.moveForward = pressed; break;
-                case 'ArrowLeft': case 'KeyA': state.moveLeft = pressed; break;
-                case 'ArrowDown': case 'KeyS': state.moveBackward = pressed; break;
-                case 'ArrowRight': case 'KeyD': state.moveRight = pressed; break;
-                case 'Space': state.jump = pressed; break;
+                case 'ArrowUp': case 'KeyW': state.moveForward=pressed; break;
+                case 'ArrowLeft': case 'KeyA': state.moveLeft=pressed; break;
+                case 'ArrowDown': case 'KeyS': state.moveBackward=pressed; break;
+                case 'ArrowRight': case 'KeyD': state.moveRight=pressed; break;
+                case 'Space': state.jump=pressed; break;
             }
         }
 
         function dispatchChatMessage(text) {
             recordChatMessage('user', text);
-            window.parent?.postMessage({ source: 'world-engine', type: 'world-engine-chat', payload: { text, role: 'user', direction: 'outgoing' } }, '*');
+            window.parent?.postMessage({ source:'world-engine', type:'world-engine-chat', payload: {text, role:'user', direction:'outgoing'} }, '*');
         }
 
-        function replaceChatHistory(entries = []) {
-            const normalized = Array.isArray(entries) ? entries.map(entry => ({
-                role: entry?.role === 'user' ? 'user' : 'assistant',
-                text: String(entry?.text ?? '').trim()
-            })).filter(entry => entry.text) : [];
-            state.chatHistory = normalized.slice(-CHAT_HISTORY_LIMIT);
-            renderChatBubble();
-        }
-        
         function updateInstructionsVisibility() {
             const el = document.getElementById('instructions');
             if(el) el.style.display = (runtimeSettings.showInstructions && !state.isLocked) ? 'block' : 'none';
@@ -643,74 +504,61 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            const time = performance.now();
-            const delta = Math.min((time - state.lastTime) / 1000, 0.1);
-            state.lastTime = time;
-            state.globalTime += delta;
-
-            // Update Wind Uniforms
+            const time = performance.now(), delta = Math.min((time-state.lastTime)/1000, 0.1);
+            state.lastTime = time; state.globalTime += delta;
+            
             globalUniforms.time.value = state.globalTime;
 
-            // Fireflies Motion
             if(fireflies) {
-                const pos = fireflies.geometry.attributes.position.array;
-                const ph = fireflies.geometry.attributes.phase.array;
+                const pos=fireflies.geometry.attributes.position.array, ph=fireflies.geometry.attributes.phase.array;
                 for(let i=0; i<pos.length/3; i++) {
-                    pos[i*3+1] += Math.sin(state.globalTime * 1.0 + ph[i]) * 0.02; 
-                    pos[i*3] += Math.cos(state.globalTime * 0.5 + ph[i]) * 0.01;
+                    pos[i*3+1] += Math.sin(state.globalTime + ph[i])*0.02;
+                    pos[i*3] += Math.cos(state.globalTime*0.5 + ph[i])*0.01;
                 }
                 fireflies.geometry.attributes.position.needsUpdate = true;
             }
 
-            if (state.isLocked) updateMovement(delta);
+            if(state.isLocked) updateMovement(delta);
 
-            if (chatSprite && chatSprite.visible) {
-                const bob = Math.sin(state.globalTime * 2.0) * 0.05;
-                const h = chatSprite.userData.height || 3.5;
+            if(chatSprite?.visible) {
+                const bob = Math.sin(state.globalTime*2)*0.05;
                 chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
-                chatSprite.position.y += (h * 0.4) + bob; 
+                chatSprite.position.y += (chatSprite.userData.height||3.5)*0.4 + bob;
                 chatSprite.lookAt(camera.position);
             }
-
             renderer.render(scene, camera);
         }
 
         function updateMovement(delta) {
-            const damping = 8.0; 
-            const accel = 60.0 * runtimeSettings.movementSpeed;
-
+            const accel = 60 * runtimeSettings.movementSpeed;
+            const damping = 8;
             state.velocity.x -= state.velocity.x * damping * delta;
             state.velocity.z -= state.velocity.z * damping * delta;
 
-            const inputX = Number(state.moveRight) - Number(state.moveLeft);
-            const inputZ = Number(state.moveBackward) - Number(state.moveForward);
-
-            if (inputX !== 0 || inputZ !== 0) {
-                const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
-                const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
-                const move = new THREE.Vector3().addScaledVector(right, inputX).addScaledVector(forward, -inputZ).normalize();
+            const ix = Number(state.moveRight)-Number(state.moveLeft);
+            const iz = Number(state.moveBackward)-Number(state.moveForward);
+            
+            if (ix!==0 || iz!==0) {
+                const fwd = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), state.yaw);
+                const rgt = new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0), state.yaw);
+                const move = new THREE.Vector3().addScaledVector(rgt, ix).addScaledVector(fwd, -iz).normalize();
                 state.velocity.x += move.x * accel * delta;
                 state.velocity.z += move.z * accel * delta;
             }
-            
+
             state.velocity.y -= GRAVITY * delta;
-            if (state.jump && state.isGrounded) {
-                state.velocity.y = JUMP_FORCE;
-                state.isGrounded = false;
-            }
+            if(state.jump && state.isGrounded) { state.velocity.y = JUMP_FORCE; state.isGrounded = false; }
 
             camera.position.x += state.velocity.x * delta;
             camera.position.z += state.velocity.z * delta;
             camera.position.y += state.velocity.y * delta;
 
-            const groundH = getTerrainHeight(camera.position.x, camera.position.z);
-            if (camera.position.y < groundH + PLAYER_EYE_HEIGHT) {
-                camera.position.y = groundH + PLAYER_EYE_HEIGHT;
+            const h = getTerrainHeight(camera.position.x, camera.position.z);
+            if(camera.position.y < h + PLAYER_EYE_HEIGHT) {
+                camera.position.y = h + PLAYER_EYE_HEIGHT;
                 state.velocity.y = Math.max(0, state.velocity.y);
                 state.isGrounded = true;
-            } else {
-                state.isGrounded = false;
-            }
+            } else state.isGrounded = false;
         }
     </script>
 </body>
