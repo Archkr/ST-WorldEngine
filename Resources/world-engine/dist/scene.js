@@ -1,6 +1,7 @@
 import { ExpressionTextureClient } from './expression-listener.js';
 
 const DEFAULT_CHAT_TEXT = 'Welcome to the Park!';
+const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
 
 const runtimeSettings = {
     movementSpeed: 1.0,
@@ -36,6 +37,9 @@ const projection = {
 const canvas = document.createElement('canvas');
 canvas.id = 'world-engine-canvas';
 const ctx = canvas.getContext('2d');
+canvas.style.position = 'fixed';
+canvas.style.inset = '0';
+canvas.style.zIndex = '0';
 document.body.appendChild(canvas);
 
 const world = {
@@ -92,7 +96,7 @@ function updateInstructionsVisibility() {
 }
 
 function updateChatMessage(text) {
-    state.chatText = text ? String(text) : DEFAULT_CHAT_TEXT;
+    state.chatText = String(text ?? '').trim() || DEFAULT_CHAT_TEXT;
 }
 
 function handleIncomingMessage(event) {
@@ -106,6 +110,11 @@ function handleIncomingMessage(event) {
     if (data.type === 'world-engine-chat') {
         updateChatMessage(data.payload?.text);
     }
+}
+
+function handleAssistantMessage(event) {
+    const incoming = event?.detail?.message ?? event?.detail ?? '';
+    updateChatMessage(incoming);
 }
 
 function clamp(value, min, max) {
@@ -180,6 +189,7 @@ function setupEvents() {
         resizeRenderer(size.width, size.height);
     });
     window.addEventListener('message', handleIncomingMessage);
+    window.addEventListener(ASSISTANT_MESSAGE_EVENT, handleAssistantMessage);
 
     const resizeObserver = new ResizeObserver((entries) => {
         const entry = entries[0];
@@ -342,9 +352,13 @@ function drawChatBubble() {
 
     const bubbleWidth = 180 * projected.scale;
     const bubbleHeight = 80 * projected.scale;
-    const x = projected.x - bubbleWidth / 2;
-    const y = projected.y - bubbleHeight / 2;
+    const padding = 12 * projected.scale;
+    const clampedX = clamp(projected.x, bubbleWidth / 2 + padding, projection.width - bubbleWidth / 2 - padding);
+    const clampedY = clamp(projected.y, bubbleHeight / 2 + padding, projection.height - bubbleHeight / 2 - padding);
+    const x = clampedX - bubbleWidth / 2;
+    const y = clampedY - bubbleHeight / 2;
 
+    ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
     ctx.lineWidth = 2;
@@ -357,7 +371,8 @@ function drawChatBubble() {
     ctx.font = `${Math.max(14, 24 * projected.scale)}px Inter, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(state.chatText, projected.x, projected.y);
+    ctx.fillText(state.chatText, clampedX, clampedY);
+    ctx.restore();
 }
 
 function drawTree(tree) {
@@ -429,6 +444,7 @@ function init() {
 window.WorldEngine = window.WorldEngine || {};
 window.WorldEngine.ExpressionTextureClient = ExpressionTextureClient;
 window.WorldEngine.updateChatMessage = updateChatMessage;
+window.WorldEngine.receiveAssistantMessage = updateChatMessage;
 window.WorldEngine.applySettings = applySettings;
 
 init();
