@@ -117,7 +117,6 @@
             const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.4);
             sunLight.position.set(60, 100, 40);
             sunLight.castShadow = true;
-            // Optimize shadows for large open world
             sunLight.shadow.mapSize.width = 2048;
             sunLight.shadow.mapSize.height = 2048;
             const d = 100;
@@ -128,21 +127,19 @@
             sunLight.shadow.bias = -0.0005;
             scene.add(sunLight);
 
-            // Rim light for style
             const rimLight = new THREE.DirectionalLight(0xaaccff, 0.4);
             rimLight.position.set(-50, 30, -50);
             scene.add(rimLight);
 
             // --- Build Order ---
-            // 1. Build Avatar FIRST so it exists when we place it
             buildAvatar();
-            // 2. Build World (Terrain, Trees, Ruins)
             buildWorld();
             
-            // Set initial spawn position (on the river bank)
-            const spawnY = getTerrainHeight(0, 15);
-            camera.position.set(0, spawnY + PLAYER_EYE_HEIGHT, 15);
-            avatarSprite.position.set(0, spawnY + 1.5, 15);
+            // Spawn Player on the bank
+            const spawnZ = 20;
+            const spawnY = getTerrainHeight(0, spawnZ);
+            camera.position.set(0, spawnY + PLAYER_EYE_HEIGHT, spawnZ);
+            avatarSprite.position.set(0, spawnY + 1.5, spawnZ);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -174,26 +171,19 @@
                     ${shader.vertexShader}
                 `;
                 
-                // Inject wind logic into the vertex transformation
                 shader.vertexShader = shader.vertexShader.replace(
                     '#include <begin_vertex>',
                     `
                     #include <begin_vertex>
-                    
-                    // Height mask: only move vertices above y=0
                     float mask = max(0.0, position.y);
-                    // Simple sine wave wind
                     float sway = sin(time * 1.5 + position.x * 0.5 + position.z * 0.5) * 0.15;
                     float sway2 = cos(time * 2.1 + position.x * 0.2) * 0.1;
-                    
-                    // Apply to X and Z
                     transformed.x += (sway + sway2) * mask * windStrength;
                     transformed.z += (sway - sway2) * mask * windStrength;
                     `
                 );
             };
             
-            // Important: ensure material is treated as unique so uniforms are bound
             material.customProgramCacheKey = () => 'wind_material';
             return material;
         }
@@ -201,20 +191,19 @@
         // --- TERRAIN GENERATION ---
 
         function getTerrainHeight(x, z) {
-            // Base rolling hills
             const base = (Math.sin(x * 0.04) + Math.cos(z * 0.04)) * 2.0;
             
-            // River Channel
-            // The river runs roughly along X, winding slightly in Z
-            const riverPath = Math.sin(x * 0.08) * 8.0;
-            const distToRiver = Math.abs(z - riverPath);
+            // River Path: meandering along X
+            // We want the river to be at Z = sin(x)*...
+            const riverCenterZ = Math.sin(x * 0.05) * 10.0;
+            const distToRiver = Math.abs(z - riverCenterZ);
             
-            let h = base + 3.0; // Base elevation
+            let h = base + 2.0; // Land height
             
-            // Carve the river
-            if (distToRiver < 10.0) {
-                // Smoothstep carving
-                const depth = Math.cos((distToRiver / 10.0) * (Math.PI / 2)) * 6.0;
+            // Carve River
+            if (distToRiver < 15.0) {
+                // Deep smooth carve
+                const depth = Math.cos((distToRiver / 15.0) * (Math.PI / 2)) * 7.0;
                 h -= depth;
             }
             
@@ -222,7 +211,7 @@
         }
 
         function buildWorld() {
-            // 1. Terrain Mesh
+            // 1. Terrain
             const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 128, 128);
             geo.rotateX(-Math.PI / 2);
             
@@ -235,15 +224,15 @@
             geo.computeVertexNormals();
 
             const groundMat = new THREE.MeshStandardMaterial({ 
-                color: 0x5ba635, // Vibrant grass
+                color: 0x5ba635, 
                 roughness: 1.0,
-                flatShading: false // Smooth for anime look
+                flatShading: false 
             });
             const terrain = new THREE.Mesh(geo, groundMat);
             terrain.receiveShadow = true;
             scene.add(terrain);
 
-            // 2. Water
+            // 2. Water - Raised Level
             const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE);
             waterGeo.rotateX(-Math.PI / 2);
             const waterMat = new THREE.MeshStandardMaterial({
@@ -254,60 +243,46 @@
                 metalness: 0.1
             });
             const water = new THREE.Mesh(waterGeo, waterMat);
-            water.position.y = -1.5; // Water level
+            water.position.y = -1.0; // Raised from -1.5 to fill the channel
             scene.add(water);
 
-            // 3. Environment
+            // 3. Scenery
             buildGrass();
             buildTrees();
-            buildRuins();
+            buildRuins(); // This now builds the bridge
             buildFireflies();
         }
 
         function buildGrass() {
-            // Instanced Grass Blades
-            const count = 12000;
+            const count = 15000;
             const dummy = new THREE.Object3D();
-            
-            // Tapered blade shape
             const shape = new THREE.Shape();
             shape.moveTo(-0.05, 0);
             shape.lineTo(0.05, 0);
-            shape.lineTo(0, 0.6); // Tip
+            shape.lineTo(0, 0.6);
             shape.lineTo(-0.05, 0);
             const geo = new THREE.ShapeGeometry(shape);
-            
-            // Use wind material
             const mat = makeWindMaterial({ color: 0x88cc44, side: THREE.DoubleSide });
-            
             const mesh = new THREE.InstancedMesh(geo, mat, count);
             mesh.receiveShadow = true;
-            // Shadow casting is expensive for grass, skipping
 
             let i = 0;
             while(i < count) {
-                const x = (Math.random() - 0.5) * 160;
-                const z = (Math.random() - 0.5) * 160;
+                const x = (Math.random() - 0.5) * 180;
+                const z = (Math.random() - 0.5) * 180;
                 const y = getTerrainHeight(x, z);
 
-                // Only place on land (above water line)
-                if (y > -1.2) {
+                // Don't spawn underwater
+                if (y > -0.8) {
                     dummy.position.set(x, y, z);
                     dummy.rotation.y = Math.random() * Math.PI;
-                    // Slight random tilt
                     dummy.rotation.x = (Math.random() - 0.5) * 0.3;
-                    dummy.rotation.z = (Math.random() - 0.5) * 0.3;
-                    
-                    const s = 0.8 + Math.random() * 0.8;
-                    dummy.scale.set(s, s, s);
+                    dummy.scale.setScalar(0.8 + Math.random() * 0.8);
                     dummy.updateMatrix();
                     mesh.setMatrixAt(i, dummy.matrix);
-                    
-                    // Color variation
                     const col = new THREE.Color(0x77bb44);
                     col.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
                     mesh.setColorAt(i, col);
-                    
                     i++;
                 }
             }
@@ -315,137 +290,133 @@
         }
 
         function buildTrees() {
-            // Stylized "Fluffy" Pine Trees (Stacked distorted spheres)
             const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 2.5, 7);
             const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
-
-            // Fluffy foliage using Icosahedron (looks like a leaf clump)
             const leafGeo = new THREE.IcosahedronGeometry(1, 0);
             const leafMat = makeWindMaterial({ color: 0x2d6e32, flatShading: true });
-
-            const count = 60;
+            const count = 70;
             
             for(let i=0; i<count; i++) {
-                const x = (Math.random() - 0.5) * 180;
-                const z = (Math.random() - 0.5) * 180;
+                const x = (Math.random() - 0.5) * 190;
+                const z = (Math.random() - 0.5) * 190;
                 const y = getTerrainHeight(x, z);
 
-                // Avoid water and spawn area
-                if (y < -0.5 || (Math.abs(x) < 8 && Math.abs(z-15) < 8)) continue;
+                // Avoid water and bridge area (X=10, Z=5 roughly)
+                if (y < -0.2 || (Math.abs(x-10) < 10 && Math.abs(z-5) < 10)) continue;
 
                 const group = new THREE.Group();
                 group.position.set(x, y, z);
-                
-                // Trunk
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
                 trunk.position.y = 1.25;
                 trunk.castShadow = true;
                 trunk.receiveShadow = true;
                 group.add(trunk);
 
-                // 3 Layers of Fluff
-                // Layer 1
-                const f1 = new THREE.Mesh(leafGeo, leafMat);
-                f1.position.y = 3.0;
-                f1.scale.set(2.2, 1.5, 2.2);
-                f1.castShadow = true;
-                f1.receiveShadow = true;
-                group.add(f1);
+                for(let L=0; L<3; L++) {
+                    const f = new THREE.Mesh(leafGeo, leafMat);
+                    f.position.y = 3.0 + (L * 1.8);
+                    const s = 2.2 - (L * 0.4);
+                    f.scale.set(s, 1.5, s);
+                    f.castShadow = true;
+                    f.receiveShadow = true;
+                    group.add(f);
+                }
 
-                // Layer 2
-                const f2 = new THREE.Mesh(leafGeo, leafMat);
-                f2.position.y = 4.8;
-                f2.scale.set(1.8, 1.5, 1.8);
-                f2.castShadow = true;
-                f2.receiveShadow = true;
-                group.add(f2);
-
-                // Layer 3 (Top)
-                const f3 = new THREE.Mesh(leafGeo, leafMat);
-                f3.position.y = 6.2;
-                f3.scale.set(1.2, 1.5, 1.2);
-                f3.castShadow = true;
-                f3.receiveShadow = true;
-                group.add(f3);
-
-                // Randomize
                 const scale = 1.0 + Math.random() * 0.6;
                 group.scale.set(scale, scale, scale);
                 group.rotation.y = Math.random() * Math.PI;
-
                 scene.add(group);
             }
         }
 
         function buildRuins() {
-            // Create broken bridge parts
-            const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
-            const plankGeo = new THREE.BoxGeometry(3, 0.2, 1);
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.9 });
             
-            // Left part of bridge
-            const bridgeL = new THREE.Group();
-            const p1 = new THREE.Mesh(plankGeo, woodMat);
-            p1.castShadow = true;
-            bridgeL.add(p1);
-            // Handrail
-            const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1, 0.2), woodMat);
-            post.position.set(1.4, 0.6, 0.4);
-            bridgeL.add(post);
-            const post2 = post.clone();
-            post2.position.set(-1.4, 0.6, -0.4);
-            bridgeL.add(post2);
+            // Bridge Logic:
+            // We want to cross the river. River flows X, varying Z.
+            // Let's pick a spot where the river is. At x=10.
+            // River center Z = sin(10*0.05)*10 ~= 4.8.
+            // So we build a bridge at x=10, spanning Z.
             
-            // Place on terrain near spawn (over the river)
-            bridgeL.position.set(5, 0.5, 5);
-            bridgeL.rotation.z = 0.15; // Tilted like it's broken
-            bridgeL.rotation.y = 0.4;
-            scene.add(bridgeL);
+            const bridgeX = 10;
+            const bridgeZ = 5; // Approx river center
+            const bridgeY = 1.0; // Height above water (-1.0)
 
-            // Right part
-            const bridgeR = bridgeL.clone();
-            bridgeR.position.set(-2, 0.2, 3);
-            bridgeR.rotation.z = -0.1;
-            bridgeR.rotation.y = 0.2;
-            scene.add(bridgeR);
+            // Left Segment (Ramp up)
+            const segmentL = createBridgeSegment(woodMat);
+            segmentL.position.set(bridgeX, bridgeY, bridgeZ - 6);
+            segmentL.lookAt(bridgeX, bridgeY + 2, bridgeZ); // Aim up
+            scene.add(segmentL);
 
-            // Spawn Podium (Ancient Stone)
+            // Right Segment (Ramp up)
+            const segmentR = createBridgeSegment(woodMat);
+            segmentR.position.set(bridgeX, bridgeY, bridgeZ + 6);
+            segmentR.lookAt(bridgeX, bridgeY + 2, bridgeZ); // Aim up
+            scene.add(segmentR);
+
+            // Broken Middle pieces
+            const debris = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 1), woodMat);
+            debris.position.set(bridgeX, -0.8, bridgeZ); // In water
+            debris.rotation.set(0.2, 0.5, 0.1);
+            scene.add(debris);
+            
+            const debris2 = debris.clone();
+            debris2.position.set(bridgeX + 1, -0.9, bridgeZ + 1);
+            debris2.rotation.set(-0.2, 0.1, 0.5);
+            scene.add(debris2);
+
+            // Spawn Podium
             const podiumGeo = new THREE.CylinderGeometry(2.5, 3, 0.4, 8);
             const podiumMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
             const podium = new THREE.Mesh(podiumGeo, podiumMat);
             
-            const spawnH = getTerrainHeight(0, 15);
-            podium.position.set(0, spawnH + 0.2, 15);
+            // Place podium on the bank
+            const spawnZ = 20;
+            const spawnH = getTerrainHeight(0, spawnZ);
+            podium.position.set(0, spawnH + 0.2, spawnZ);
             podium.receiveShadow = true;
             scene.add(podium);
         }
 
+        function createBridgeSegment(material) {
+            const group = new THREE.Group();
+            const plankGeo = new THREE.BoxGeometry(2, 0.2, 4); // Wide X, Length Z
+            
+            const floor = new THREE.Mesh(plankGeo, material);
+            floor.castShadow = true;
+            floor.receiveShadow = true;
+            group.add(floor);
+            
+            // Rails
+            const postGeo = new THREE.BoxGeometry(0.2, 1, 0.2);
+            const railGeo = new THREE.BoxGeometry(0.2, 0.2, 4);
+            
+            const p1 = new THREE.Mesh(postGeo, material); p1.position.set(0.9, 0.5, 1.8); group.add(p1);
+            const p2 = new THREE.Mesh(postGeo, material); p2.position.set(-0.9, 0.5, 1.8); group.add(p2);
+            const p3 = new THREE.Mesh(postGeo, material); p3.position.set(0.9, 0.5, -1.8); group.add(p3);
+            const p4 = new THREE.Mesh(postGeo, material); p4.position.set(-0.9, 0.5, -1.8); group.add(p4);
+            
+            const r1 = new THREE.Mesh(railGeo, material); r1.position.set(0.9, 1.0, 0); group.add(r1);
+            const r2 = new THREE.Mesh(railGeo, material); r2.position.set(-0.9, 1.0, 0); group.add(r2);
+
+            return group;
+        }
+
         function buildFireflies() {
-            const count = 100;
+            const count = 150;
             const geo = new THREE.BufferGeometry();
             const pos = [];
             const phase = [];
-
             for(let i=0; i<count; i++) {
-                pos.push(
-                    (Math.random()-0.5)*100,
-                    1 + Math.random()*4,
-                    (Math.random()-0.5)*100
-                );
+                pos.push((Math.random()-0.5)*100, 1 + Math.random()*4, (Math.random()-0.5)*100);
                 phase.push(Math.random() * Math.PI * 2);
             }
-
             geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
             geo.setAttribute('phase', new THREE.Float32BufferAttribute(phase, 1));
-
             const mat = new THREE.PointsMaterial({
-                color: 0xffffaa,
-                size: 0.25,
-                transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
+                color: 0xaaffaa, size: 0.25, transparent: true, opacity: 0.8,
+                blending: THREE.AdditiveBlending, depthWrite: false
             });
-
             fireflies = new THREE.Points(geo, mat);
             scene.add(fireflies);
         }
@@ -455,16 +426,14 @@
             const material = new THREE.SpriteMaterial({ transparent: true });
             avatarSprite = new THREE.Sprite(material);
             avatarSprite.scale.set(3, 3, 1);
-            // Position is set in init()
             scene.add(avatarSprite);
 
-            // Shadow Blob
             const shadowGeo = new THREE.CircleGeometry(1.0, 32);
             const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
             const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
             shadowMesh.rotation.x = -Math.PI / 2;
-            shadowMesh.position.y = -1.45; // Relative to avatar center
-            avatarSprite.add(shadowMesh); // Attach to avatar
+            shadowMesh.position.y = -1.45;
+            avatarSprite.add(shadowMesh);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
@@ -490,18 +459,14 @@
         function renderChatBubble() {
             if (!chatMaterial) return;
             if (chatMaterial.map) chatMaterial.map.dispose();
-
             const assistantMsgs = state.chatHistory.filter(m => m.role === 'assistant');
             const displayEntry = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
             const entries = displayEntry ? [displayEntry] : (state.chatHistory.length === 0 ? [{role:'assistant', text:DEFAULT_CHAT_MESSAGE}] : []);
-            
             if (entries.length === 0) { chatSprite.visible = false; return; }
-            
             chatSprite.visible = true;
             const { texture, aspectRatio } = createChatTexture(entries);
             chatMaterial.map = texture;
             chatMaterial.needsUpdate = true;
-            
             const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
             chatSprite.scale.set(CHAT_WORLD_WIDTH, newHeight, 1);
             chatSprite.userData.height = newHeight;
@@ -512,36 +477,28 @@
             const padding = 40, headerHeight = 60, lineHeight = 44, canvasWidth = 1024;
             const maxWidth = canvasWidth - (padding * 2);
             const tailHeight = 30;
-
             const mCanvas = document.createElement('canvas');
             const mCtx = mCanvas.getContext('2d');
             mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
             const totalHeight = padding + headerHeight + (wrappedLines.length * lineHeight) + padding + tailHeight;
-
             const canvas = document.createElement('canvas');
             canvas.width = canvasWidth;
             canvas.height = Math.max(256, totalHeight);
             const ctx = canvas.getContext('2d');
-
             const bubbleHeight = canvas.height - tailHeight - 20;
             const startX = 10, startY = 10; 
-
-            // Glassy Blue Theme
             const gradient = ctx.createLinearGradient(0, 0, 0, bubbleHeight);
             gradient.addColorStop(0, 'rgba(30, 40, 60, 0.95)');
             gradient.addColorStop(1, 'rgba(15, 20, 30, 0.98)');
-
             ctx.fillStyle = gradient;
             ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
             ctx.lineWidth = 4;
             ctx.shadowColor = 'rgba(0,0,0,0.7)';
             ctx.shadowBlur = 25;
             ctx.shadowOffsetY = 15;
-            
             roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
             ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-
             ctx.beginPath();
             const tailX = canvas.width / 2;
             const tailYPos = startY + bubbleHeight;
@@ -550,20 +507,18 @@
             ctx.lineTo(tailX + 25, tailYPos);
             ctx.fillStyle = 'rgba(15, 20, 30, 0.98)';
             ctx.fill();
-
             ctx.font = 'bold 28px "Inter", sans-serif';
             ctx.fillStyle = '#60a5fa';
             ctx.textBaseline = 'top';
             ctx.fillText("ASSISTANT", startX + padding, startY + padding);
-
             ctx.font = '500 32px "Inter", sans-serif';
             ctx.fillStyle = '#f1f5f9';
             let textY = startY + padding + headerHeight;
             wrappedLines.forEach(line => { ctx.fillText(line, startX + padding, textY); textY += lineHeight; });
-
             const texture = new THREE.CanvasTexture(canvas);
             texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
             texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
             texture.needsUpdate = true;
             return { texture, aspectRatio: canvas.width / canvas.height };
         }
@@ -689,14 +644,14 @@
         function animate() {
             requestAnimationFrame(animate);
             const time = performance.now();
-            const delta = Math.min((time - state.lastTime) / 1000, 0.1); // Cap delta
+            const delta = Math.min((time - state.lastTime) / 1000, 0.1);
             state.lastTime = time;
             state.globalTime += delta;
 
-            // Update Wind
+            // Update Wind Uniforms
             globalUniforms.time.value = state.globalTime;
 
-            // Fireflies
+            // Fireflies Motion
             if(fireflies) {
                 const pos = fireflies.geometry.attributes.position.array;
                 const ph = fireflies.geometry.attributes.phase.array;
