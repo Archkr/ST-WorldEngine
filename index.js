@@ -3,7 +3,7 @@ import { callGenericPopup, POPUP_TYPE } from '/scripts/popup.js';
 
 const EXTENSION_NAME = 'world-engine';
 const EXTENSION_BASE_URL = new URL('.', import.meta.url);
-const VIEW_URL = new URL('./resources/world-engine/index.html', EXTENSION_BASE_URL).toString();
+const VIEW_URL = new URL('./Resources/world-engine/index.html', EXTENSION_BASE_URL).toString();
 const DEFAULT_SETTINGS = {
     movementSpeed: 1.0,
     invertLook: false,
