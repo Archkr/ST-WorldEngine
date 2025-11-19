@@ -15,8 +15,8 @@
     <div id="chat_overlay" aria-label="World Engine chat">
         <div id="chat_log" aria-live="polite"></div>
         <form id="chat_form" autocomplete="off">
-            <input id="chat_input" name="chat_input" type="text" placeholder="Say something..." inputmode="text" maxlength="500">
-            <button type="submit">Send</button>
+            <input id="chat_input" name="chat_input" type="text" placeholder="Type a message..." inputmode="text" maxlength="1000">
+            <button type="submit" aria-label="Send Message">Send</button>
         </form>
     </div>
 
@@ -35,9 +35,9 @@
 
         const DEFAULT_CHAT_MESSAGE = 'Welcome to the Park!';
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
-        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.2, 0); // Raised slightly
+        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.4, 0); 
         const CHAT_HISTORY_LIMIT = 12;
-        const CHAT_BUBBLE_HISTORY = 1; // Only show the very last message for a clean RPG look
+        const CHAT_WORLD_WIDTH = 7; // Fixed width in 3D world units
 
         const runtimeSettings = {
             movementSpeed: 1.0,
@@ -183,7 +183,7 @@
                 dispatchChatMessage(text);
                 if (chatInput) {
                     chatInput.value = '';
-                    chatInput.blur(); // Optional: blur to let user move immediately
+                    chatInput.blur();
                 }
             });
 
@@ -325,7 +325,8 @@
             chatSprite = new THREE.Sprite(chatMaterial);
             chatSprite.renderOrder = 10;
             chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
-            chatSprite.scale.set(6, 3.5, 1);
+            // Initial scale, will be dynamic later
+            chatSprite.scale.set(CHAT_WORLD_WIDTH, 3.5, 1);
             scene.add(chatSprite);
         }
 
@@ -338,7 +339,6 @@
             const text = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
             const history = state.chatHistory;
             
-            // Simple push, only keeping latest context
             history.push({ role: normalizedRole, text });
             if (history.length > CHAT_HISTORY_LIMIT) history.shift();
             
@@ -349,11 +349,9 @@
             if (!chatMaterial) return;
             if (chatMaterial.map) chatMaterial.map.dispose();
 
-            // Filter history to only show the last Assistant message for a cleaner RPG look
             const assistantMsgs = state.chatHistory.filter(m => m.role === 'assistant');
             const displayEntry = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
             
-            // If no assistant message, or history is empty, hide bubble or show default
             const entries = displayEntry ? [displayEntry] : (state.chatHistory.length === 0 ? [{role:'assistant', text:DEFAULT_CHAT_MESSAGE}] : []);
             
             if (entries.length === 0) {
@@ -362,79 +360,90 @@
             }
             
             chatSprite.visible = true;
-            chatMaterial.map = createChatTexture(entries);
+            // Generate texture and get its aspect ratio
+            const { texture, aspectRatio } = createChatTexture(entries);
+            chatMaterial.map = texture;
             chatMaterial.needsUpdate = true;
             
-            // Animate a tiny bit of float (visual only, handled in animate loop mostly)
+            // Update Sprite Scale to match text height dynamics
+            // We keep width fixed (CHAT_WORLD_WIDTH) and scale height
+            const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
+            chatSprite.scale.set(CHAT_WORLD_WIDTH, newHeight, 1);
+            
+            // Adjust offset slightly based on height so it grows UP, not down
+            const baseOffset = 2.4; // Bottom of avatar head roughly
+            chatSprite.position.y = avatarSprite.position.y + baseOffset + (newHeight * 0.4);
         }
 
         function createChatTexture(historyEntries) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 1024; // High res for sharpness
-            canvas.height = 512;
-
-            // Clear
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const entry = historyEntries[0]; // We are only showing one message
+            const entry = historyEntries[0];
             const padding = 40;
-            const maxWidth = canvas.width - (padding * 2);
-            
-            // 1. Measure Text to Size the Bubble Dynamically
-            ctx.font = '600 32px "Inter", "Segoe UI", system-ui, sans-serif';
-            const wrappedLines = wrapAndClampText(ctx, entry.text, maxWidth, 6);
-            
-            const lineHeight = 48;
-            const headerHeight = 50;
-            const textHeight = wrappedLines.length * lineHeight;
-            const bubbleHeight = textHeight + headerHeight + (padding * 2);
-            const bubbleWidth = Math.max(400, canvas.width); // Use full width for sprite consistency
+            const headerHeight = 60;
+            const lineHeight = 44;
+            const canvasWidth = 1024;
+            const maxWidth = canvasWidth - (padding * 2);
+            const tailHeight = 30;
 
-            // Centering vars
+            // Create a temp canvas to measure text
+            const measureCanvas = document.createElement('canvas');
+            const mCtx = measureCanvas.getContext('2d');
+            mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
+            
+            // Wrap text to find out how tall the canvas needs to be
+            const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
+            const textBlockHeight = wrappedLines.length * lineHeight;
+            const totalHeight = padding + headerHeight + textBlockHeight + padding + tailHeight;
+
+            // Create the actual canvas with dynamic height
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = Math.max(256, totalHeight); // Minimum height for aesthetics
+            const ctx = canvas.getContext('2d');
+
+            // --- Draw Bubble ---
+            const bubbleHeight = canvas.height - tailHeight - 20; // Leave room for tail and shadow
             const startX = 10;
-            const startY = canvas.height - bubbleHeight - 20; // Align to bottom of texture so tail connects
-            
-            // 2. Draw Glass Bubble Background
-            const gradient = ctx.createLinearGradient(0, startY, 0, startY + bubbleHeight);
-            gradient.addColorStop(0, 'rgba(30, 30, 40, 0.85)');
-            gradient.addColorStop(1, 'rgba(15, 15, 20, 0.95)');
-            
+            const startY = 10; // Top padding
+
+            // Glass Background
+            const gradient = ctx.createLinearGradient(0, 0, 0, bubbleHeight);
+            gradient.addColorStop(0, 'rgba(20, 25, 35, 0.90)');
+            gradient.addColorStop(1, 'rgba(10, 12, 16, 0.98)');
+
             ctx.fillStyle = gradient;
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 4;
             
-            // Shadow for depth
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 20;
-            ctx.shadowOffsetY = 10;
+            // Shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetY = 12;
 
-            roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 30, true, true);
+            roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
             
-            // Reset shadow for text
+            // Reset Shadow
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
 
-            // 3. Draw "Tail" (Triangle at bottom center)
+            // Tail
             ctx.beginPath();
             const tailX = canvas.width / 2;
-            const tailY = startY + bubbleHeight;
-            ctx.moveTo(tailX - 20, tailY);
-            ctx.lineTo(tailX, tailY + 25);
-            ctx.lineTo(tailX + 20, tailY);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(15, 15, 20, 0.95)';
+            const tailYPos = startY + bubbleHeight;
+            ctx.moveTo(tailX - 25, tailYPos);
+            ctx.lineTo(tailX, tailYPos + tailHeight);
+            ctx.lineTo(tailX + 25, tailYPos);
+            ctx.fillStyle = 'rgba(10, 12, 16, 0.98)';
             ctx.fill();
 
-            // 4. Draw Name Header
+            // Text Header
             ctx.font = 'bold 28px "Inter", sans-serif';
-            ctx.fillStyle = '#60a5fa'; // Blue-ish
+            ctx.fillStyle = '#60a5fa';
             ctx.textBaseline = 'top';
             ctx.fillText("ASSISTANT", startX + padding, startY + padding);
 
-            // 5. Draw Message Body
+            // Text Body
             ctx.font = '500 32px "Inter", sans-serif';
-            ctx.fillStyle = '#f1f5f9'; // White-ish
+            ctx.fillStyle = '#f1f5f9';
             
             let textY = startY + padding + headerHeight;
             wrappedLines.forEach(line => {
@@ -444,11 +453,17 @@
 
             const texture = new THREE.CanvasTexture(canvas);
             texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
             texture.needsUpdate = true;
-            return texture;
+            
+            return { 
+                texture, 
+                aspectRatio: canvas.width / canvas.height 
+            };
         }
 
-        function wrapAndClampText(ctx, message, maxWidth, maxLines) {
+        function wrapText(ctx, message, maxWidth) {
             const words = message.split(/\s+/);
             let lines = [];
             let currentLine = words[0];
@@ -464,7 +479,7 @@
                 }
             }
             lines.push(currentLine);
-            return lines.slice(0, maxLines);
+            return lines;
         }
 
         function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
@@ -500,12 +515,16 @@
                 updateMovement(delta);
             }
 
-            // Bobbing effect for the chat bubble
             if (chatSprite && chatSprite.visible) {
-                const bobOffset = Math.sin(time * 0.002) * 0.1;
-                chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
-                chatSprite.position.y += bobOffset;
-                // Always face camera
+                const bobOffset = Math.sin(time * 0.002) * 0.05;
+                // position.y was set in renderChatBubble, we modify it slightly for effect
+                // But we need to be careful not to override the scaling logic, so we just add to the base y we set earlier
+                // Ideally we store a baseHeight in the sprite userData
+                if (chatSprite.userData.baseY === undefined) {
+                    chatSprite.userData.baseY = chatSprite.position.y;
+                }
+                // Update base Y if scale changed recently (we can track this via userData too or just accept a small jump)
+                // For simplicity, we re-calculate lookAt every frame
                 chatSprite.lookAt(camera.position);
             }
 
