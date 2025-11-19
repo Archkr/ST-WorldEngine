@@ -1,0 +1,33 @@
+{
+  "moonlitEchoesPreset": true,
+  "presetVersion": "2.4.1",
+  "presetName": "Glimmer - by Rivelle",
+  "settings": {
+    "customThemeColor": "rgba(81, 160, 222, 1)",
+    "customThemeColor2": "rgba(255, 255, 255, 1)",
+    "customBgColor1": "rgba(255, 255, 255, 0.1)",
+    "customBgColor2": "rgba(255, 255, 255, 0.05)",
+    "customTopBarColor": "rgba(30, 30, 30, 1)",
+    "Drawer-iconColor": "rgba(198, 198, 198, 1)",
+    "sheldBackgroundColor": "rgba(30, 30, 30, 0.6)",
+    "customScrollbarColor": "rgba(198, 198, 198, 0.5)",
+    "customCSS-bg-blur": "3",
+    "sheldBlurStrength": "5",
+    "customCSS-bg-opacity": "1",
+    "customCSS-ChatGradientBlur": "linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 1) 2%, rgba(0, 0, 0, 1) 98%, rgba(0, 0, 0, 0) 100%)",
+    "custom-ChatAvatar": "40px",
+    "customlastInContext": "1.2px solid var(--customThemeColor)",
+    "custom-EchoAvatarWidth": "20%",
+    "custom-EchoAvatarHeight": "300px",
+    "customWhisperAvatarWidth": "50%",
+    "customWhisperAvatarAlign": "center",
+    "customRippleAvatarWidth": "180px",
+    "customRippleAvatarMobileWidth": "100px",
+    "messageDetailsAnimationDuration": "0.8s",
+    "VN-sheld-height": "40dvh",
+    "VN-expression-holder": "linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 90%, rgba(0, 0, 0, 0) 100%)",
+    "enableMobile-send_form": true,
+    "enableMessageDetails": false,
+    "justifyParagraphText": false
+  }
+}

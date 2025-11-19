@@ -1,0 +1,148 @@
+/* Basic settings */
+.theme-category-content {
+    display: block;
+    width: 100%;
+    padding: 8px 0;
+    overflow-y: auto;
+    transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+}
+
+/* Single column layout */
+.colors-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Improved setting item container */
+.theme-setting-item {
+    margin-bottom: 12px;
+}
+
+/* Improved category title container */
+.theme-category-header {
+    padding: 8px 0 !important;
+    margin-bottom: 5px !important;
+
+    h4 {
+        font-weight: 700;
+    }
+}
+
+/* Improved labels and descriptions */
+.theme-setting-container label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.theme-setting-container small {
+    display: block;
+    margin-bottom: 8px;
+    opacity: 0.7;
+    font-size: 0.85em;
+}
+
+/* Improved color picker layout */
+.theme-color-picker {
+    max-width: 480px;
+}
+
+/* Improved dropdown menu */
+select.widthNatural.flex1.margin0 {
+    min-width: 185.5px !important;
+    max-width: 480px !important;
+}
+
+/* Setting item uniform width limit */
+.theme-setting-container {
+    margin: 8px 0;
+}
+
+/* Improved slider style */
+input[type="range"].moonlit-neo-range-input {
+    height: 6px;
+    border-radius: 3px;
+}
+input[type="number"].moonlit-neo-range-input {
+    width: 60px;
+    height: 32.5px;
+    text-align: center;
+    border-radius: 5px;
+    background-color: var(--black30a);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);;
+}
+
+/* Improved color picker visual effects */
+.color-preview {
+    box-shadow: 0 0 3px var(--black30a);
+}
+
+/* Improved input box style */
+.theme-setting-container input[type="text"] {
+    padding: 5px 8px;
+    background-color: var(--black30a);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    border-radius: 5px;
+    color: var(--SmartThemeBodyColor);
+}
+
+/* Preset manager style */
+.moonlit-preset-manager {
+position: relative;
+background-color: var(--black30a);
+border-radius: 5px;
+padding: 15px;
+margin-bottom: 15px !important;
+border: 1.2px solid color-mix(in srgb, var(--customThemeColor) 50%, transparent);
+box-shadow: 0 0 10px color-mix(in srgb, var(--customThemeColor) 25%, transparent);
+overflow: hidden;
+}
+
+.moonlit-preset-manager::before {
+    content: "";
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 80px;
+    height: 80px;
+    opacity: 0.15;
+    z-index: 0;
+    background-color: var(--SmartThemeBodyColor);
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%23000' stroke-dasharray='4' stroke-dashoffset='4' stroke-linecap='round' stroke-linejoin='round' stroke-width='1'%3E%3Cpath d='M13 4h1.5M13 4h-1.5M13 4v1.5M13 4v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0' fill='freeze' attributeName='stroke-dashoffset' begin='0.6s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+4s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+3.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+5.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+1.8s' to='M12 5h1.5M12 5h-1.5M12 5v1.5M12 5v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+3.8s' to='M12 4h1.5M12 4h-1.5M12 4v1.5M12 4v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+5.8s' to='M13 4h1.5M13 4h-1.5M13 4v1.5M13 4v-1.5'/%3E%3C/path%3E%3Cpath d='M19 11h1.5M19 11h-1.5M19 11v1.5M19 11v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1' fill='freeze' attributeName='stroke-dashoffset' begin='1s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+4s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+3.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+5.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+1.8s' to='M17 11h1.5M17 11h-1.5M17 11v1.5M17 11v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+3.8s' to='M18 12h1.5M18 12h-1.5M18 12v1.5M18 12v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+5.8s' to='M19 11h1.5M19 11h-1.5M19 11v1.5M19 11v-1.5'/%3E%3C/path%3E%3Cpath d='M19 4h1.5M19 4h-1.5M19 4v1.5M19 4v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2' fill='freeze' attributeName='stroke-dashoffset' begin='2.8s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+2s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+3.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+1.8s' to='M20 5h1.5M20 5h-1.5M20 5v1.5M20 5v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+5.8s' to='M19 4h1.5M19 4h-1.5M19 4v1.5M19 4v-1.5'/%3E%3C/path%3E%3C/g%3E%3Cg fill='none' stroke='%23000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cg%3E%3Cpath stroke-dasharray='2' stroke-dashoffset='4' d='M12 21v1M21 12h1M12 3v-1M3 12h-1'%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' dur='0.2s' values='4;2'/%3E%3C/path%3E%3Cpath stroke-dasharray='2' stroke-dashoffset='4' d='M18.5 18.5l0.5 0.5M18.5 5.5l0.5 -0.5M5.5 5.5l-0.5 -0.5M5.5 18.5l-0.5 0.5'%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='0.2s' dur='0.2s' values='4;2'/%3E%3C/path%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='0'/%3E%3C/g%3E%3Cpath fill='%23000' d='M7 6 C7 12.08 11.92 17 18 17 C18.53 17 19.05 16.96 19.56 16.89 C17.95 19.36 15.17 21 12 21 C7.03 21 3 16.97 3 12 C3 8.83 4.64 6.05 7.11 4.44 C7.04 4.95 7 5.47 7 6 Z' opacity='0'%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='1'/%3E%3C/path%3E%3C/g%3E%3Cmask id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition3'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23fff'/%3E%3Ccircle cx='22' cy='2' r='3' fill='%23fff'%3E%3Canimate fill='freeze' attributeName='cx' begin='0.1s' dur='0.4s' values='22;18'/%3E%3Canimate fill='freeze' attributeName='cy' begin='0.1s' dur='0.4s' values='2;6'/%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='3;12'/%3E%3C/circle%3E%3Ccircle cx='22' cy='2' r='1'%3E%3Canimate fill='freeze' attributeName='cx' begin='0.1s' dur='0.4s' values='22;18'/%3E%3Canimate fill='freeze' attributeName='cy' begin='0.1s' dur='0.4s' values='2;6'/%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='1;10'/%3E%3C/circle%3E%3C/mask%3E%3Ccircle cx='12' cy='12' r='6' mask='url(%23lineMdSunnyFilledLoopToMoonFilledAltLoopTransition3)' fill='%23000'%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='6;10'/%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='0'/%3E%3C/circle%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%23000' stroke-dasharray='4' stroke-dashoffset='4' stroke-linecap='round' stroke-linejoin='round' stroke-width='1'%3E%3Cpath d='M13 4h1.5M13 4h-1.5M13 4v1.5M13 4v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0' fill='freeze' attributeName='stroke-dashoffset' begin='0.6s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+4s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+3.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+5.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+1.8s' to='M12 5h1.5M12 5h-1.5M12 5v1.5M12 5v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+3.8s' to='M12 4h1.5M12 4h-1.5M12 4v1.5M12 4v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition0.begin+5.8s' to='M13 4h1.5M13 4h-1.5M13 4v1.5M13 4v-1.5'/%3E%3C/path%3E%3Cpath d='M19 11h1.5M19 11h-1.5M19 11v1.5M19 11v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1' fill='freeze' attributeName='stroke-dashoffset' begin='1s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+4s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+3.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+5.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+1.8s' to='M17 11h1.5M17 11h-1.5M17 11v1.5M17 11v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+3.8s' to='M18 12h1.5M18 12h-1.5M18 12v1.5M18 12v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition1.begin+5.8s' to='M19 11h1.5M19 11h-1.5M19 11v1.5M19 11v-1.5'/%3E%3C/path%3E%3Cpath d='M19 4h1.5M19 4h-1.5M19 4v1.5M19 4v-1.5'%3E%3Canimate id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2' fill='freeze' attributeName='stroke-dashoffset' begin='2.8s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+6s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+2s' dur='0.4s' values='4;0'/%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+1.2s;lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+3.2s' dur='0.4s' values='0;4'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+1.8s' to='M20 5h1.5M20 5h-1.5M20 5v1.5M20 5v-1.5'/%3E%3Cset fill='freeze' attributeName='d' begin='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition2.begin+5.8s' to='M19 4h1.5M19 4h-1.5M19 4v1.5M19 4v-1.5'/%3E%3C/path%3E%3C/g%3E%3Cg fill='none' stroke='%23000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Cg%3E%3Cpath stroke-dasharray='2' stroke-dashoffset='4' d='M12 21v1M21 12h1M12 3v-1M3 12h-1'%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' dur='0.2s' values='4;2'/%3E%3C/path%3E%3Cpath stroke-dasharray='2' stroke-dashoffset='4' d='M18.5 18.5l0.5 0.5M18.5 5.5l0.5 -0.5M5.5 5.5l-0.5 -0.5M5.5 18.5l-0.5 0.5'%3E%3Canimate fill='freeze' attributeName='stroke-dashoffset' begin='0.2s' dur='0.2s' values='4;2'/%3E%3C/path%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='0'/%3E%3C/g%3E%3Cpath fill='%23000' d='M7 6 C7 12.08 11.92 17 18 17 C18.53 17 19.05 16.96 19.56 16.89 C17.95 19.36 15.17 21 12 21 C7.03 21 3 16.97 3 12 C3 8.83 4.64 6.05 7.11 4.44 C7.04 4.95 7 5.47 7 6 Z' opacity='0'%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='1'/%3E%3C/path%3E%3C/g%3E%3Cmask id='lineMdSunnyFilledLoopToMoonFilledAltLoopTransition3'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23fff'/%3E%3Ccircle cx='22' cy='2' r='3' fill='%23fff'%3E%3Canimate fill='freeze' attributeName='cx' begin='0.1s' dur='0.4s' values='22;18'/%3E%3Canimate fill='freeze' attributeName='cy' begin='0.1s' dur='0.4s' values='2;6'/%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='3;12'/%3E%3C/circle%3E%3Ccircle cx='22' cy='2' r='1'%3E%3Canimate fill='freeze' attributeName='cx' begin='0.1s' dur='0.4s' values='22;18'/%3E%3Canimate fill='freeze' attributeName='cy' begin='0.1s' dur='0.4s' values='2;6'/%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='1;10'/%3E%3C/circle%3E%3C/mask%3E%3Ccircle cx='12' cy='12' r='6' mask='url(%23lineMdSunnyFilledLoopToMoonFilledAltLoopTransition3)' fill='%23000'%3E%3Canimate fill='freeze' attributeName='r' begin='0.1s' dur='0.4s' values='6;10'/%3E%3Cset fill='freeze' attributeName='opacity' begin='0.5s' to='0'/%3E%3C/circle%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    transform: rotate(-10deg);
+}
+
+.moonlit-preset-manager > * {
+    position: relative;
+    z-index: 1;
+}
+
+.moonlit-preset-manager h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1em;
+    opacity: 0.85;
+    text-align: left;
+    padding: 3px;
+    padding-left: 10px !important;
+    border-left: 3px solid var(--customThemeColor);
+}
+
+.moonlit-preset-selector {
+    width: 100% !important; /* Ensure full width */
+    flex: none !important; /* Remove flex growth */
+    padding: 5px 8px;
+    background-color: var(--black30a);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    border-radius: 5px;
+    color: var(--SmartThemeBodyColor);
+    margin-bottom: 5px !important;
+    box-sizing: border-box;
+}

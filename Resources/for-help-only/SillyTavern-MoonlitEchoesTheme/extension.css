@@ -1,0 +1,916 @@
+/* --- Quick Replies 快速回覆 --- */
+#qr--bar {
+    margin-top: 8px !important;
+
+    @media screen and (max-width: 1000px) {
+        max-height: calc(38px * var(--mobileQRsBarHeight));
+        overflow: auto;
+        margin-bottom: 5px !important;
+        min-width: 100% !important;
+    }
+
+    > .qr--buttons {
+        gap: 3px 0 !important;
+
+        &.qr--color {
+            background-color: unset;
+        }
+
+        .qr--button {
+            font-size: calc(var(--mainFontSize) * 0.9);
+            margin: 3px !important;
+
+            @media screen and (max-width: 1000px) {
+                padding: 3px 4px !important;
+            }
+        }
+    }
+    > .qr--buttons .qr--button {
+        font-size: calc(var(--mainFontSize) * 0.9);
+        font-weight: 500;
+        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+
+        @media screen and (max-width: 1000px) {
+            font-size: calc(var(--mainFontSize) * 0.85);
+        }
+    }
+    .qr--button-expander {
+        border-left: 0 !important;
+        width: 1em !important;
+        margin-left: 2px !important;
+
+        @media screen and (max-width: 1000px) {
+            width: 20px;
+        }
+    }
+}
+
+#qr--popout {
+    > .qr--body {
+        > .qr--buttons {
+            &.qr--color {
+                background-color: unset;
+                gap: 3px;
+            }
+        }
+    }
+}
+
+.ctx-menu {
+    position: absolute;
+    padding: 5px 8px;
+    opacity: 1 !important;
+    background-color: var(--SmartThemeBlurTintColor) !important;
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+
+    @media screen and (max-width: 1000px) {
+        margin-left: -50px;
+    }
+}
+.ctx-sub-menu {
+    opacity: 1 !important;
+    background-color: var(--SmartThemeBlurTintColor) !important;
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+}
+.ctx-blocker {
+    li {
+        margin-bottom: 0px !important;
+        font-size: var(--mainFontSize);
+    }
+}
+.ctx-item + .ctx-header {
+    border-top: 1px dashed color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+    margin-top: 5px;
+    padding-top: 10px;
+}
+.list-group .list-group-item.ctx-header {
+    opacity: 0.8 !important;
+    letter-spacing: 0.2px;
+}
+.ctx-blocker li:hover {
+    color: var(--SmartThemeBodyColor);
+}
+.list-group .list-group-item.ctx-header,
+.ctx-item .qr--button-label{
+    @media screen and (max-width: 1000px) {
+        font-size: calc(var(--mainFontSize) * 0.95) !important;
+        padding-bottom: 2.5px;
+    }
+}
+.list-group .list-group-item.ctx-item {
+    @media screen and (max-width: 1000px) {
+        padding: 1px 5px !important;
+    }
+}
+
+/* --- Chat Info 聊天資訊 --- */
+
+body:has(#extensionTopBar) {
+    #sheld {
+        padding-top: calc(var(--topBarBlockSize)) !important;
+    }
+
+    @media screen and (max-width: 1000px) {
+        #sheld {
+            padding-top: calc(var(--topBarBlockSize) - 5px) !important;
+        }
+
+    }
+}
+body.waifuMode:has(#extensionTopBar) {
+    #sheld {
+        padding-top: 0 !important;
+    }
+}
+
+#extensionTopBar {
+    /* 定位 */
+    position: fixed;
+    top: calc(var(--topBarBlockSize) + 5px) !important;
+    left: 50%;
+    bottom: auto;
+    transform: translateX(-50%);
+    z-index: 3005;
+
+    /* 尺寸 */
+    width: calc(var(--sheldWidth) - 20px) !important;
+    height: var(--bottomFormBlockSize);
+
+    /* 佈局 */
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    align-content: center;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding-top: 0;
+
+    /* 樣式 */
+    background-color: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength));
+    border-radius: 10px !important;
+    font-size: calc(var(--mainFontSize) * 0.9);
+    transition: all 0.8s ease;
+
+    @media screen and (max-width: 1000px) {
+        top: var(--topBarBlockSize) !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+        opacity: 0.8;
+        border: none !important;
+        border-top: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent) !important;
+        border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+    }
+}
+body:has(#extensionConnectionProfiles.visible) #extensionTopBar {
+    border-radius: 10px 10px 0 0 !important;
+
+    @media screen and (max-width: 1000px) {
+        border-radius: 0 !important;
+    }
+}
+body.waifuMode:has(#extensionConnectionProfiles.visible) #extensionTopBar {
+    border-radius: 10px !important;
+}
+
+#extensionSideBar {
+    top: var(--topBarBlockSize) !important;
+    max-height: calc(100dvh - var(--topBarBlockSize)) !important;
+    min-height: calc(100dvh - var(--topBarBlockSize)) !important;
+    border-radius: 0 !important;
+
+    &.visible {
+        display: flex;
+        padding: 15px;
+        border: 0;
+        border-top: 1.25px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+    }
+
+    #extensionSideBarContainer {
+        padding: 10px;
+        margin-bottom: 5px;
+    }
+}
+
+#select_chat_popup {
+    padding: 10px;
+    box-shadow: 0px 0px 20px var(--SmartThemeBorderColor);
+
+    @media screen and (max-width: 1000px) {
+        align-items: start;
+        height: 90dvh;
+        max-height: 90dvh;
+        align-content: start;
+        max-width: unset;
+        overflow-y: auto;
+    }
+}
+#shadow_select_chat_popup {
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    background-color: var(--black70a);
+}
+
+.select_chat_block {
+    margin: 5px 0;
+    padding: 10px 15px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+
+    &:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
+    }
+}
+
+#extensionConnectionProfiles {
+    width: calc(var(--sheldWidth) - 20px) !important;
+    transform: translateX(-50%);
+    left: 50% !important;
+    right: auto !important;
+    position: relative !important;
+    transition: all 0.8s ease;
+    margin-left: -2.5px;
+    margin-top: 5px !important;
+    z-index: 350;
+
+    @media (max-width: 1000px) {
+        width: 100% !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+        margin-left: 0;
+        margin-top: 0 !important;
+        opacity: 0.65;
+    }
+}
+
+#extensionTopBar,
+#extensionConnectionProfiles {
+    opacity: 0.8;
+    transition: all 0.5s ease;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+#extensionSideBar #extensionSideBarContainer {
+    padding-right: 10px;
+}
+#extensionSideBar #extensionSideBarContainer .sideBarItem {
+    letter-spacing: 1px;
+    opacity: 0.7;
+    margin-bottom: 5px;
+    padding: 6px 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+
+    &:hover {
+        background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+        opacity: 9;
+    }
+}
+#extensionSideBar #extensionSideBarContainer .sideBarItem .chatStats .counterBlock::after {
+    color: var(--SmartThemeBodyColor) !important;
+    font-size: calc(var(--mainFontSize)* 0.85);
+}
+#extensionSideBar #extensionSideBarContainer .sideBarItem.selected {
+    background-color: transparent !important;
+    border-color: var(--customThemeColor);
+    opacity: 1;
+}
+
+body.waifuMode {
+    #extensionConnectionProfiles {
+        border-radius: 10px !important;
+        margin-bottom: 0px !important;
+
+        @media screen and (max-width: 1000px) {
+            border-radius: 0 !important;
+        }
+    }
+}
+
+/* --- Dialogue Colorizer 對話顏色 --- */
+
+.dc-color-picker-wrapper {
+    border: 0px !important;
+}
+.dc-color-settings-group {
+    border: 0px solid var(--SmartThemeBodyColor) !important;
+}
+
+label[for="xdc-char_color_override"] b {
+    padding: 10px 0;
+    background-image: none !important;
+    border-radius: 0px !important;
+    letter-spacing: 1px;
+    display: inline-block;
+    font-weight: bold;
+    border: none;
+}
+
+/* --- Image Captioning 圖片解析 --- */
+
+.mes_img_controls {
+    .right_menu_button {
+        color: var(--SmartThemeBodyColor);
+        text-shadow: 0 0 5px var(--SmartThemeBlurTintColor) !important;
+        filter: none;
+
+        &:hover {
+            filter: none;
+            color: var(--customThemeColor);
+            text-shadow: 0 0 5px var(--SmartThemeBlurTintColor) !important;
+        }
+    }
+}
+.mes .mes_img_container.img_extra {
+    border-radius: 10px !important;
+}
+body.flatchat,
+body.bubblechat,
+body.ripplestyle {
+    .mes .mes_img_container {
+        padding-bottom: 15px;
+    }
+}
+
+table.img_metadata {
+    text-align: left;
+    max-height: 30dvh !important;
+    border-radius: 10px;
+    margin-top: 30px !important;
+    padding: 10px 20px;
+}
+
+.img_enlarged_container {
+    pre {
+        max-height: 30dvh;
+
+        code {
+        text-align: left;
+        border-radius: 10px;
+        }
+    }
+}
+
+/* --- Prome (Visual Novel Extension) 進階視覺小說模式 --- */
+
+.promeChatHistoryList {
+    .mes {
+        padding: 10px 0 !important;
+    }
+
+    .mes_text {
+        text-align: left !important;
+        padding-right: unset;
+        padding: 0 5px !important;
+    }
+}
+body.bubblechat .promeChatHistoryList {
+    .mes {
+        padding: 10px !important;
+    }
+}
+
+/* --- Quick Persona 使用者快速切換 --- */
+
+@media screen and (max-width: 1000px) {
+    #quickPersona {
+        margin: 0 calc(var(--bottomFormBlockSize) / 4) !important;
+    }
+}
+
+#quickPersonaMenu {
+    backdrop-filter: none !important;
+    border-radius: 10px !important;
+
+    .list-group {
+        backdrop-filter: none;
+        border-radius: 0;
+        border: 0;
+        box-shadow: none;
+        transition: all 0.5s ease;
+        background-color: unset !important;
+        opacity: 1;
+    }
+
+    ul {
+        gap: 8px;
+    }
+    li {
+        opacity: 1;
+        transition: all 0.5s ease;
+    }
+}
+
+.quickPersonaMenuImg {
+    opacity: 1;
+    transition: all 0.5s ease;
+
+    &:hover {
+        box-shadow: 0 0 5px var(--customThemeColor);
+        filter: brightness(1.1);
+    }
+    &.default {
+        outline-color: var(--customThemeColor) !important;
+    }
+}
+
+/* --- Codex 法典 --- */
+
+.stcdx--root {
+    top: var(--topBarBlockSize) !important;
+    padding: 1%;
+    border-radius: 0px !important;
+
+    > .stcdx--content.stcdx--entry {
+        section {
+            padding: 10px;
+        }
+    }
+
+    > .stcdx--content,
+    > .stcdx--editor {
+        text-align: left !important;
+    }
+}
+
+/* --- More Flexible Continues 彈性回覆 --- */
+.mes[is_system="false"]:has(.lacommon--quickActions[data-lacommon--anchor="bottom"]) .mes_block {
+    padding-bottom: 25px !important;
+}
+body.bubblechat .mes[is_user="true"]:has(.lacommon--quickActions[data-lacommon--anchor="bottom"]) .mes_block {
+    padding-bottom: 0 !important;
+
+    @media screen and (max-width: 1000px) {
+        padding-bottom: 25px !important;
+    }
+}
+body.echostyle,
+body.tidestyle {
+    .mes:has(.lacommon--quickActions[data-lacommon--anchor="bottom"]) .mes_block {
+        padding-bottom: 0 !important;
+    }
+}
+.lacommon--quickActions[data-lacommon--anchor="bottom"] {
+    bottom: 25px;
+    left: calc(var(--custom-ChatAvatar, 40px) + 50px);
+}
+body.flatchat {
+    .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+        bottom: 22px;
+        left: calc(var(--custom-ChatAvatar, 40px) + 35px);
+    }
+}
+body.bubblechat {
+    .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+        bottom: 12px;
+        left: calc(var(--custom-ChatAvatar, 40px) + 45px);
+    }
+
+    .mes[is_user="true"] {
+        .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+            left: 0;
+
+            @media screen and (max-width: 1000px) {
+                left: calc(var(--custom-ChatAvatar, 40px) - 5px);
+            }
+        }
+    }
+}
+body.tidestyle {
+    .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+        bottom: 10px;
+        left: 0;
+    }
+}
+
+.mfc--ctx-blocker:has(.mfc--tree) {
+    > .mfc--tree {
+        min-width: calc(var(--sheldWidth) - 15%) !important;
+        width: calc(var(--sheldWidth) - 15%) !important;
+        max-width: calc(var(--sheldWidth) - 15%) !important;
+        max-height: calc(80vh - 1em - var(--triggerTop));
+        background-color: var(--SmartThemeBlurTintColor);
+        white-space: normal;
+        word-wrap: break-word;
+        overflow: auto;
+        border-radius: 15px;
+        padding: 10px 15px;
+        backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+        transition: all 0.5s ease;
+
+        &.mfc--flipV {
+            top: unset;
+            bottom: calc(100vh - var(--triggerTop));
+            max-height: 75dvh !important;
+        }
+    }
+
+    @media screen and (max-width: 1000px) {
+        > .mfc--tree {
+            min-width: 60dvw !important;
+            max-width: 60dvw !important;
+        }
+    }
+
+    .mfc--treeText {
+        white-space: pre-line;
+        padding: 10px 15px;
+
+        &:hover {
+            text-decoration: none !important;
+        }
+    }
+
+    .mfc--active {
+        > .mfc--tree {
+            border: 1.5px solid var(--customThemeColor);
+
+            > .mfc--treeText {
+                font-weight: bold;
+            }
+        }
+    }
+}
+
+body.mes:has(.lacommon--quickActions) {
+    margin-left: 20px;
+    align-items: center !important;
+
+    &[data-lacommon--anchor="bottom"] {
+        position: absolute;
+        bottom: 20px !important;
+        left: calc(var(--custom-ChatAvatar, 40px) + 2% + 50px) !important;
+        display: flex;
+        gap: 0.5em;
+        margin: 5px 0;
+    }
+}
+body.echostyle .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.echostyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+    left: 0 !important;
+    bottom: 10px !important;
+}
+body.whisperstyle .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.whisperstyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.hushstyle .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.hushstyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.ripplestyle .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.ripplestyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+    left: var(--customMesPadding) !important;
+    bottom: 15px !important;
+}
+body.hideChatAvatars .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.hideChatAvatars .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+    bottom: 30px !important;
+}
+body.documentstyle .lacommon--quickActions[data-lacommon--anchor="bottom"],
+body.documentstyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bottom"] {
+    left: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    margin-bottom: 1px !important;
+}
+
+.mfc--root {
+    display: flex;
+    align-items: center;
+    height: 100%;
+
+    .mfc--undo,
+    .mfc--regen,
+    .mfc--swipes,
+    .mfc--cont,
+    .mfc--fav {
+        font-family: "Font Awesome 6 Free";
+        font-weight: 900;
+        font-size: 1em;
+        color: inherit;
+        margin-right: 10px;
+        opacity: 0.5;
+        transition: all 0.5s ease;
+
+        &:hover {
+            opacity: 1 !important;
+        }
+    }
+
+    .mfc--undo::before {
+        content: "\f3e5";
+    }
+    .mfc--regen::before {
+        content: "\f021";
+    }
+    .mfc--swipes::before {
+        content: "\f4ad";
+    }
+    .mfc--cont::before {
+        content: "\f178";
+    }
+    .mfc--fav::before {
+        content: "\f004";
+    }
+
+    .mfc--action {
+        visibility: hidden;
+        position: relative;
+
+        &::before {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+        }
+    }
+}
+
+/* --- Custom Theme Style Inputs 自定義樣式輸入 --- */
+
+.ctsi-flex-container {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.ctsi-button-container {
+    padding: 5px;
+}
+
+
+/* --- Notebook 筆記本 --- */
+
+#notebookPanel {
+    top: var(--topBarBlockSize) !important;
+    max-height: calc(100dvh - var(--topBarBlockSize)) !important;
+    height: calc(100dvh - var(--topBarBlockSize)) !important;
+    padding-top: 30px;
+    padding-left: 1.2%;
+    padding-right: 1.2%;
+    border-radius: 0;
+    border: 0 !important;
+    border-top: 1.25px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent) !important;
+}
+
+/* --- Qvink Memory 進階聊天記憶 --- */
+
+.qvink_memory_display.qvink_short_memory {
+    color: var(--customThemeColor2) !important;
+}
+
+body.bubblechat .qvink_memory_display {
+    margin-bottom: 20px !important;
+}
+
+/* --- Typing Indicator 角色打字提示 --- */
+
+.typing_indicator {
+    position: sticky;
+    bottom: 0;
+    margin: 5px;
+    font-size: small;
+    letter-spacing: 0.6px;
+    opacity: 1 !important;
+    text-shadow: 0 0 5px var(--SmartThemeBlurTintColor) !important;
+    width: fit-content;
+}
+
+/* --- Dialogue Colorizer 自定義對話顏色 --- */
+
+#xdc-char_color_override,
+#xdc-persona_color_override {
+    label {
+        font-weight: 600;
+        letter-spacing: 0.8px;
+    }
+}
+
+/* --- SimpleQRBarToggle 快速回覆彈出按鈕 --- */
+
+#qr_toggle_button {
+    font-size: calc(var(--mainFontSize) * 0.9);
+    width: calc(var(--mainFontSize) * 0.9) !important;
+    height: calc(var(--mainFontSize) * 0.9) !important;
+    margin-right: calc((var(--mainFontSize) * 0.9) / 2) !important;
+
+    @media screen and (max-width: 1000px) {
+        height: var(--bottomFormBlockSize) !important;
+        margin-right: unset !important;
+    }
+}
+#qr--bar.sqrbt-toggle_button-collapsed {
+    margin-top: 0 !important;
+}
+
+/* --- Quick Context Buttons 快速上下文按鈕 --- */
+
+.quick_context_size_container {
+    flex-wrap: wrap !important;
+    width: fit-content !important;
+    gap: 2px 8px !important;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+.quick_context_size {
+    flex: 1;
+    font-size: 0.8em;
+    padding: 5px 8px !important;
+    align-items: baseline;
+    min-width: unset;
+    min-height: unset;
+    margin: 0;
+    margin-bottom: 5px;
+}
+.quick_context_size small {
+    margin-left: 2px;
+}
+
+/* --- Char Switch 角色切換 --- */
+
+#rightNavHolder {
+    @media screen and (max-width: 1000px) {
+        margin-left: 5px;
+    }
+
+    #unimportantYes {
+        height: calc(var(--mainFontSize) * 1.45);
+        width: calc(var(--mainFontSize) * 1.45);
+        transition: all 0.5s ease;
+    }
+}
+body.stcs--nonDiscord .stcs--ctxBlocker > .stcs--ctxMenu {
+    padding: 5px 8px;
+    font-size: calc(var(--mainFontSize));
+    transition: all 0.5s ease !important;
+}
+.stcs--ctxBlocker > .stcs--ctxMenu > .stcs--ctxItem {
+    gap: 10px !important;
+}
+.stcs--ctxBlocker > .stcs--ctxMenu > .stcs--ctxItem.stcs--fav > .stcs--ctxAvatar {
+    outline: 1px solid var(--customThemeColor) !important;
+}
+.stcs--ctxBlocker > .stcs--ctxMenu > .stcs--ctxItem.stcs--fav > .stcs--ctxName {
+    color: var(--customThemeColor) !important;
+
+    &::before {
+        content: "♥︎";
+        color: var(--customThemeColor);
+        margin-right: 5px;
+        animation: pulse 1s infinite;
+    }
+}
+
+/* --- WorldInfo Info 世界資訊資訊欄 --- */
+
+.stwii--trigger {
+    top: 6px;
+    left: 20px !important;
+    bottom: unset !important;
+    font-size: calc(var(--mainFontSize) * 1.45) !important;
+    color: var(--Drawer-iconColor) !important;
+
+    @media screen and (max-width: 1000px) {
+        bottom: calc(var(--formSheldHeight)) !important;
+        top: auto !important;
+        left: 8px !important;
+        margin-bottom: 10px;
+        margin-left: 5px;
+        z-index: 100 !important;
+    }
+}
+@media screen and (max-width: 1000px) {
+    body:has(.stwii--trigger):not(.waifuMode) .typing_indicator {
+        left: 40px !important;
+    }
+    body.waifuMode .stwii--trigger {
+        bottom: auto !important;
+        top: calc(var(--topBarBlockSize) + 10px) !important;
+    }
+    body.waifuMode:has(#extensionTopBar) .stwii--trigger {
+        top: calc(var(--topBarBlockSize) + 50px) !important;
+    }
+    body:not(.waifuMode) {
+        .stwii--trigger {
+            bottom: calc(var(--formSheldHeight)) !important;
+            top: auto !important;
+        }
+    }
+}
+
+.stwii--panel {
+    box-shadow: 0 0 25px color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, transparent);
+    border: 1px solid var(--SmartThemeBorderColor);
+    margin-bottom: -10px !important;
+    max-width: 80dvw !important;
+    max-height: 70dvh !important;
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength)));
+
+    @media screen and (max-width: 1000px) {
+        top: var(--topBarBlockSize) !important;
+        margin-top: 10px !important;
+    }
+}
+
+/* 提示歷史 */
+
+@media screen and (max-width: 1000px) {
+    .stth--trigger {
+        margin: unset !important;
+        opacity: 0.8 !important;
+        position: absolute;
+        top: 80px;
+        left: 10px;
+    }
+    body:has(#extensionSideBar.visible, #extensionConnectionProfiles.visible) {
+        .stth--trigger {
+            top: 110px;
+            right: 10px;
+            left: auto;
+        }
+    }
+}
+
+/* ChatsPlus 聊天+ */
+
+body:has(#chatsplus-tab-row) {
+    #CharListButtonAndHotSwaps {
+        margin-bottom: 0 !important;
+    }
+}
+
+/* Input History 輸入歷史 */
+
+.stih--history {
+    font-size: 1em !important;
+}
+.stih--history.stih--active {
+    padding: 5px 10px;
+    background: var(--SmartThemeBlurTintColor) !important;
+    backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    -webkit-backdrop-filter: blur(calc(var(--SmartThemeBlurStrength))) !important;
+    box-shadow: 0 0 25px color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, transparent);
+}
+.stih--history .stih--item {
+    padding: 5px !important;
+    margin-bottom: 2px !important;
+    border-radius: 10px !important;
+    transition: all 0.5s ease !important;
+
+    &:hover {
+        opacity: 1;
+        background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    }
+}
+.stih--buttons .stih--button {
+    flex: unset !important;
+    font-size: calc(var(--mainFontSize) * 0.9) !important;
+}
+
+#nonQRFormItems {
+    .stih--buttons .stih--arrows {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+    }
+
+    .menu_button {
+        background: transparent !important;
+        border: none !important;
+        font-size: calc(var(--mainFontSize) * 0.9) !important;
+        padding: 0 !important;
+        opacity: 0.7;
+        transition: opacity var(--animation-duration-2x);
+        padding-left: 10px !important;
+        min-width: unset !important;
+
+        @media screen and (max-width: 1000px) {
+            padding-left: 12px !important;
+        }
+    }
+}
+
+@media screen and (max-width: 1000px) {
+    .stih--buttons {
+        position: absolute;
+        bottom: 3px;
+        right: 50px;
+    }
+    .stih--buttons,
+    .stih--buttons > * {
+        gap: 5px !important;
+    }
+}
+
+/* Character Creator */
+
+dialog.popup.wide_dialogue_popup.large_dialogue_popup.popup--animation-fast {
+    padding-top: 25px;
+}
+
+.popup-button-close.right_menu_button.fa-solid.fa-circle-xmark.interactable.sttt--enabled {
+    padding-top: 15px;
+    padding-right: 40px;
+}
