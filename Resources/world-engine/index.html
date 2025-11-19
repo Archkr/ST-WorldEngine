@@ -142,6 +142,8 @@
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.outputColorSpace = THREE.SRGBColorSpace;
+            // NOTE: Tone mapping is enabled globally, but we disable it for the chat bubble material below
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
             
             document.body.appendChild(renderer.domElement);
 
@@ -158,7 +160,6 @@
                 shader.uniforms.time = globalUniforms.time;
                 shader.uniforms.windStrength = globalUniforms.windStrength;
                 
-                // FIXED: Added newline \n before appending the rest of the shader
                 shader.vertexShader = `
                     uniform float time; 
                     uniform float windStrength;
@@ -313,7 +314,14 @@
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader: loader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
 
-            chatMaterial = new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
+            // FIXED: Disabled toneMapping and Fog for the chat bubble so it matches the UI perfectly
+            chatMaterial = new THREE.SpriteMaterial({ 
+                transparent: true, 
+                depthTest: false, 
+                depthWrite: false,
+                toneMapped: false, // CRITICAL: Ignore lighting post-processing
+                fog: false         // CRITICAL: Ignore atmospheric fog
+            });
             chatSprite = new THREE.Sprite(chatMaterial);
             chatSprite.renderOrder = 10;
             chatSprite.scale.set(CHAT_WORLD_WIDTH, 3.5, 1);
@@ -369,7 +377,9 @@
             ctx.shadowBlur = 40;
             ctx.shadowOffsetY = 20;
 
-            roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 50, true, true);
+            // Adjusted rounded corners to match input bar (12px roughly)
+            // 30px on 2048px texture is roughly 12px on screen
+            roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 30, true, true);
             ctx.shadowColor = 'transparent';
 
             ctx.beginPath();
@@ -395,6 +405,8 @@
             tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
             tex.minFilter = THREE.LinearFilter;
             tex.magFilter = THREE.LinearFilter;
+            // Texture must be SRGB to match screen colors correctly when renderer is SRGB
+            tex.colorSpace = THREE.SRGBColorSpace;
             return { texture: tex, aspectRatio: canvas.width / canvas.height };
         }
 
