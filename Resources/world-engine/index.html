@@ -129,10 +129,9 @@
             scene.add(rimLight);
 
             buildWorld();
-            // Note: buildAvatar is called inside buildWorld to ensure proper layering/positioning
             
-            // Spawn Player
-            const spawnZ = 25; // Back up a bit to see the structure
+            // Spawn Player slightly further inland (Z=28) to avoid steep slopes
+            const spawnZ = 28; 
             const spawnY = getTerrainHeight(0, spawnZ);
             camera.position.set(0, spawnY + PLAYER_EYE_HEIGHT, spawnZ);
 
@@ -210,7 +209,7 @@
             buildTrees();
             buildRuins();
             buildFireflies();
-            buildAvatarAndStructure(); // Combined for cleaner positioning
+            buildAvatarAndStructure(); 
         }
 
         function buildGrass() {
@@ -242,7 +241,7 @@
             const leafGeo = new THREE.IcosahedronGeometry(1, 0);
             for(let i=0; i<70; i++) {
                 const x = (Math.random()-0.5)*190, z = (Math.random()-0.5)*190, y = getTerrainHeight(x, z);
-                if (y < -0.2 || (Math.abs(x-10)<10 && Math.abs(z-15)<12)) continue; // Avoid avatar area
+                if (y < -0.2 || (Math.abs(x-10)<10 && Math.abs(z-28)<12)) continue; // Avoid new spawn area
                 const group = new THREE.Group();
                 group.position.set(x, y, z);
                 
@@ -299,11 +298,10 @@
         }
 
         function buildAvatarAndStructure() {
-            // Define spawn location
-            const spawnZ = 15;
+            // Spawn Point: Further inland to avoid steep river banks
+            const spawnZ = 28;
             const spawnY = getTerrainHeight(0, spawnZ);
 
-            // --- 1. The Structure (Stone Dais/Altar) ---
             const structureGroup = new THREE.Group();
             structureGroup.position.set(0, spawnY, spawnZ);
 
@@ -313,52 +311,55 @@
                 flatShading: true 
             });
 
-            // Bottom Step (Wide)
+            // 1. Deep Foundation (The fix for floating)
+            // A cylinder extending downwards into the earth
+            const foundation = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 6.0, 8), stoneMat);
+            foundation.position.y = -3.0; // Center goes deep
+            foundation.receiveShadow = true;
+            structureGroup.add(foundation);
+
+            // 2. Bottom Step
             const step1 = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.8, 0.3, 8), stoneMat);
             step1.position.y = 0.15; 
             step1.receiveShadow = true;
             structureGroup.add(step1);
 
-            // Top Platform (Narrower)
+            // 3. Top Platform
             const step2 = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 3.0, 0.3, 8), stoneMat);
             step2.position.y = 0.45;
             step2.receiveShadow = true;
             step2.castShadow = true;
             structureGroup.add(step2);
 
-            // Decorative Pillars (Small broken columns around ring)
+            // 4. Decorative Pillars
             for(let i=0; i<5; i++) {
                 const angle = (i / 5) * Math.PI * 2;
                 const col = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 0.6 + Math.random()*0.4, 6), stoneMat);
                 col.position.set(Math.sin(angle)*3.2, 0.5, Math.cos(angle)*3.2);
-                col.rotation.set((Math.random()-0.5)*0.2, 0, (Math.random()-0.5)*0.2); // Ruined tilt
+                col.rotation.set((Math.random()-0.5)*0.2, 0, (Math.random()-0.5)*0.2); 
                 col.castShadow = true;
                 structureGroup.add(col);
             }
 
             scene.add(structureGroup);
 
-            // --- 2. The Character ---
+            // --- Character Setup ---
             const loader = new THREE.TextureLoader();
             avatarSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
             avatarSprite.scale.set(3, 3, 1);
             
-            // Position avatar standing on the top step (Y = terrain + 0.3 step1 + 0.3 step2 = +0.6)
-            // Sprite center is at Y=0, so we offset up by 1.5 (half scale) to feet are at 0.6
+            // Position avatar on top of the steps (0.6 height relative to spawnY)
             avatarSprite.position.set(0, spawnY + 0.6 + 1.5, spawnZ);
             scene.add(avatarSprite);
             
-            // Soft shadow blob under character
             const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.2, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
             shadow.rotation.x = -Math.PI/2; 
-            shadow.position.y = -1.45; // Relative to sprite center
+            shadow.position.y = -1.45; 
             avatarSprite.add(shadow);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader: loader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
 
-            // --- 3. The Chat Bubble ---
-            // toneMapped: false and fog: false ensure colors match UI exactly
             chatMaterial = new THREE.SpriteMaterial({ 
                 transparent: true, 
                 depthTest: false, 
@@ -412,13 +413,10 @@
             const ctx = canvas.getContext('2d');
             const bubbleHeight = canvas.height - tailHeight - 30;
 
-            // --- Matched to Styles.css (--st-block-bg) ---
-            // Use exact rgba(30, 33, 36, 0.95) for the background
             ctx.fillStyle = 'rgba(30, 33, 36, 0.95)'; 
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; 
             ctx.lineWidth = 4;
             
-            // Shadow matching UI
             ctx.shadowColor = 'rgba(0,0,0,0.5)';
             ctx.shadowBlur = 40;
             ctx.shadowOffsetY = 20;
@@ -426,26 +424,22 @@
             roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 50, true, true);
             ctx.shadowColor = 'transparent';
 
-            // Tail
             ctx.beginPath();
             const tailX = canvas.width / 2;
             const tailY = 20 + bubbleHeight;
             ctx.moveTo(tailX - 30, tailY);
             ctx.lineTo(tailX, tailY + tailHeight);
             ctx.lineTo(tailX + 30, tailY);
-            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)'; // Same fill
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)';
             ctx.fill();
-            // Optional: Draw tail border line if desired, but fill is cleaner for native look
 
-            // Speaker Name (Accent Color)
             ctx.font = 'bold 38px "Inter", sans-serif';
             ctx.fillStyle = '#0078d7'; 
             ctx.textBaseline = 'top';
             ctx.fillText("ASSISTANT", padding + 20, padding + 20);
 
-            // Message Text
             ctx.font = '400 42px "Inter", "Segoe UI", sans-serif';
-            ctx.fillStyle = '#e0e0e0'; // Light text
+            ctx.fillStyle = '#e0e0e0';
             let textY = padding + 20 + headerHeight;
             wrappedLines.forEach(line => { ctx.fillText(line, padding + 20, textY); textY += lineHeight; });
 
@@ -453,7 +447,6 @@
             tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
             tex.minFilter = THREE.LinearFilter;
             tex.magFilter = THREE.LinearFilter;
-            // IMPORTANT: SRGB color space ensures colors match CSS exactly
             tex.colorSpace = THREE.SRGBColorSpace;
             return { texture: tex, aspectRatio: canvas.width / canvas.height };
         }
