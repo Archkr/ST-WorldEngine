@@ -52,6 +52,8 @@
         let renderer;
         let chatMaterial;
         let chatSprite;
+        let avatarSprite;
+        let expressionClient;
 
         window.WorldEngine = window.WorldEngine || {};
         window.WorldEngine.updateChatMessage = updateChatMessage;
@@ -228,13 +230,19 @@
         }
 
         function buildAvatar() {
-            const map = new THREE.TextureLoader().load('https://robohash.org/player1.png?size=200x200');
-            const material = new THREE.SpriteMaterial({ map });
-            const sprite = new THREE.Sprite(material);
+            const textureLoader = new THREE.TextureLoader();
+            const material = new THREE.SpriteMaterial();
 
-            sprite.position.set(0, 2.5, 0);
-            sprite.scale.set(3, 3, 1);
-            scene.add(sprite);
+            avatarSprite = new THREE.Sprite(material);
+            avatarSprite.position.set(0, 2.5, 0);
+            avatarSprite.scale.set(3, 3, 1);
+            scene.add(avatarSprite);
+
+            expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
+
+            if (expressionClient?.fallbackUrl) {
+                expressionClient.swapTexture(expressionClient.fallbackUrl);
+            }
 
             chatMaterial = new THREE.SpriteMaterial();
             chatSprite = new THREE.Sprite(chatMaterial);
