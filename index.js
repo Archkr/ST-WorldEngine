@@ -338,6 +338,9 @@ function setupSettingsPanel(root) {
     const maximizeButton = root.querySelector('#world_engine_maximize');
     const maximizeIcon = maximizeButton?.querySelector('.fa-solid');
     const maximizeLabel = maximizeButton?.querySelector('.world-engine-maximize-label');
+    const iframeWrapperParent = iframeWrapper?.parentElement;
+    const iframeWrapperPlaceholder = document.createComment('world-engine-iframe-placeholder');
+    const iframeWrapperNextSibling = iframeWrapper?.nextSibling || null;
     let isMaximized = false;
 
     const updateIframeSrc = () => {
@@ -358,8 +361,35 @@ function setupSettingsPanel(root) {
         sendSettingsToFrame(iframe?.contentWindow, settings);
     };
 
+    const moveWrapperToBody = () => {
+        if (!iframeWrapper) return;
+
+        if (!iframeWrapperPlaceholder.isConnected && iframeWrapperParent) {
+            iframeWrapperParent.insertBefore(iframeWrapperPlaceholder, iframeWrapper);
+        }
+
+        document.body.appendChild(iframeWrapper);
+    };
+
+    const restoreWrapperToPanel = () => {
+        if (!iframeWrapper || !iframeWrapperParent) return;
+
+        if (iframeWrapperPlaceholder.parentNode) {
+            iframeWrapperPlaceholder.replaceWith(iframeWrapper);
+            return;
+        }
+
+        iframeWrapperParent.insertBefore(iframeWrapper, iframeWrapperNextSibling);
+    };
+
     const setMaximized = (maximized) => {
         isMaximized = Boolean(maximized);
+
+        if (isMaximized) {
+            moveWrapperToBody();
+        } else {
+            restoreWrapperToPanel();
+        }
         iframeWrapper?.classList.toggle('is-maximized', isMaximized);
         document.body.classList.toggle('world-engine-maximized', isMaximized);
 
