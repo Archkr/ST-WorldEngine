@@ -11,6 +11,404 @@
         <p>Move: W, A, S, D</p>
         <p>Look: Mouse</p>
     </div>
-    <script type="module" src="./dist/scene.js"></script>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { ExpressionTextureClient } from './dist/expression-listener.js';
+
+        const DEFAULT_CHAT_MESSAGE = 'Welcome to the Park!';
+        const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
+
+        const runtimeSettings = {
+            movementSpeed: 1.0,
+            invertLook: false,
+            showInstructions: true,
+        };
+
+        const state = {
+            moveForward: false,
+            moveBackward: false,
+            moveLeft: false,
+            moveRight: false,
+            velocity: new THREE.Vector3(),
+            yaw: Math.PI,
+            pitch: 0,
+            lastTime: performance.now(),
+            isLocked: false,
+            chatText: DEFAULT_CHAT_MESSAGE,
+        };
+
+        let camera;
+        let scene;
+        let renderer;
+        let chatMaterial;
+        let chatSprite;
+
+        window.WorldEngine = window.WorldEngine || {};
+        window.WorldEngine.updateChatMessage = updateChatMessage;
+        window.WorldEngine.applySettings = applySettings;
+        window.WorldEngine.ExpressionTextureClient = ExpressionTextureClient;
+        window.WorldEngine.receiveAssistantMessage = updateChatMessage;
+
+        window.addEventListener(ASSISTANT_MESSAGE_EVENT, (event) => {
+            const incoming = event?.detail?.message ?? event?.detail ?? '';
+            updateChatMessage(incoming);
+        });
+
+        window.addEventListener('message', handleIncomingMessage);
+
+        init();
+        animate();
+
+        function init() {
+            parseSettingsFromQuery();
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 10, 100);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.set(0, 1.6, 10);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
+
+            const light = new THREE.HemisphereLight(0xffffff, 0x777788, 2.5);
+            light.position.set(0.5, 1, 0.75);
+            scene.add(light);
+
+            buildPark();
+            buildAvatar();
+            updateChatMessage(state.chatText);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            setupPointerLock(renderer.domElement);
+            setupEvents();
+            updateInstructionsVisibility();
+        }
+
+        function parseSettingsFromQuery() {
+            const params = new URLSearchParams(window.location.search);
+            const moveSpeed = Number(params.get('moveSpeed'));
+            const invertLook = params.get('invertLook');
+            const showInstructions = params.get('showInstructions');
+
+            applySettings({
+                movementSpeed: Number.isFinite(moveSpeed) ? moveSpeed : undefined,
+                invertLook: invertLook === null ? undefined : invertLook === 'true',
+                showInstructions: showInstructions === null ? undefined : showInstructions === 'true',
+            });
+        }
+
+        function applySettings(newSettings = {}) {
+            runtimeSettings.movementSpeed = Math.max(0.1, Number(newSettings.movementSpeed ?? runtimeSettings.movementSpeed));
+            runtimeSettings.invertLook = Boolean(newSettings.invertLook ?? runtimeSettings.invertLook);
+            runtimeSettings.showInstructions = Boolean(newSettings.showInstructions ?? runtimeSettings.showInstructions);
+            updateInstructionsVisibility();
+        }
+
+        function handleIncomingMessage(event) {
+            const { data } = event;
+            if (!data || data.source !== 'world-engine') return;
+
+            if (data.type === 'world-engine-settings') {
+                applySettings(data.payload || {});
+            }
+
+            if (data.type === 'world-engine-chat') {
+                updateChatMessage(data.payload?.text);
+            }
+        }
+
+        function setupPointerLock(target) {
+            const instructions = document.getElementById('instructions');
+            const requestLock = () => target.requestPointerLock?.();
+
+            instructions?.addEventListener('click', requestLock);
+            target.addEventListener('click', requestLock);
+
+            document.addEventListener('pointerlockchange', () => {
+                state.isLocked = document.pointerLockElement === target;
+                updateInstructionsVisibility();
+            });
+
+            document.addEventListener('mousemove', (event) => {
+                if (!state.isLocked) return;
+                const lookSpeed = 0.0025;
+                state.yaw -= event.movementX * lookSpeed;
+                state.pitch -= event.movementY * lookSpeed * (runtimeSettings.invertLook ? -1 : 1);
+                const maxPitch = Math.PI / 2 - 0.01;
+                state.pitch = Math.max(-maxPitch, Math.min(maxPitch, state.pitch));
+                camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
+            });
+        }
+
+        function setupEvents() {
+            document.addEventListener('keydown', (event) => handleKey(event, true));
+            document.addEventListener('keyup', (event) => handleKey(event, false));
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function handleKey(event, pressed) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    state.moveForward = pressed;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    state.moveLeft = pressed;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    state.moveBackward = pressed;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    state.moveRight = pressed;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function buildPark() {
+            const floorGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
+            const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x4c9a2a });
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            const treeGeo = new THREE.ConeGeometry(2, 8, 8);
+            const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57 });
+            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.5, 2);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+
+            for (let i = 0; i < 40; i++) {
+                const treeGroup = new THREE.Group();
+                const foliage = new THREE.Mesh(treeGeo, treeMat);
+                foliage.position.y = 5;
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 1;
+
+                treeGroup.add(trunk);
+                treeGroup.add(foliage);
+
+                const x = Math.random() * 100 - 50;
+                const z = Math.random() * 100 - 50;
+
+                if (Math.abs(x) > 5 || Math.abs(z) > 5) {
+                    treeGroup.position.set(x, 0, z);
+                    scene.add(treeGroup);
+                }
+            }
+
+            const podiumGeo = new THREE.CylinderGeometry(2, 2.5, 1, 32);
+            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
+            const podium = new THREE.Mesh(podiumGeo, podiumMat);
+            podium.position.set(0, 0.5, 0);
+            scene.add(podium);
+        }
+
+        function buildAvatar() {
+            const map = new THREE.TextureLoader().load('https://robohash.org/player1.png?size=200x200');
+            const material = new THREE.SpriteMaterial({ map });
+            const sprite = new THREE.Sprite(material);
+
+            sprite.position.set(0, 2.5, 0);
+            sprite.scale.set(3, 3, 1);
+            scene.add(sprite);
+
+            chatMaterial = new THREE.SpriteMaterial();
+            chatSprite = new THREE.Sprite(chatMaterial);
+            chatSprite.position.set(0, 4.5, 0);
+            chatSprite.scale.set(4, 2, 1);
+            scene.add(chatSprite);
+        }
+
+        function updateChatMessage(message) {
+            state.chatText = message || DEFAULT_CHAT_MESSAGE;
+            if (!chatMaterial) return;
+
+            if (chatMaterial.map) {
+                chatMaterial.map.dispose();
+            }
+
+            chatMaterial.map = createTextTexture(state.chatText);
+            chatMaterial.needsUpdate = true;
+        }
+
+        function createTextTexture(message) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            roundRect(ctx, 10, 50, 490, 150, 20, true);
+
+            ctx.font = 'Bold 32px Arial';
+            ctx.fillStyle = 'black';
+            ctx.textAlign = 'center';
+
+            const maxWidth = 470;
+            const maxLines = 3;
+            const textLines = wrapAndClampText(ctx, message || DEFAULT_CHAT_MESSAGE, maxWidth, maxLines);
+            const lineHeight = 42;
+            const textAreaHeight = 150;
+            const startY = 50 + (textAreaHeight - (lineHeight * textLines.length)) / 2 + lineHeight / 2;
+
+            textLines.forEach((line, index) => {
+                ctx.fillText(line, 256, startY + index * lineHeight);
+            });
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        function wrapAndClampText(ctx, message, maxWidth, maxLines) {
+            const words = message.split(/\s+/).filter(Boolean);
+            if (!words.length) return [''];
+
+            const lines = [];
+            let currentLine = '';
+
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+                if (ctx.measureText(nextLine).width <= maxWidth) {
+                    currentLine = nextLine;
+                    continue;
+                }
+
+                if (lines.length === maxLines - 1) {
+                    const remaining = [currentLine, ...words.slice(i)].filter(Boolean).join(' ');
+                    lines.push(clampLine(ctx, remaining, maxWidth));
+                    return lines;
+                }
+
+                if (currentLine) {
+                    lines.push(currentLine);
+                } else {
+                    lines.push(clampLine(ctx, word, maxWidth));
+                }
+
+                currentLine = '';
+            }
+
+            if (lines.length === maxLines) {
+                return lines;
+            }
+
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines.slice(0, maxLines);
+        }
+
+        function clampLine(ctx, text, maxWidth) {
+            let clamped = text;
+            const ellipsis = '…';
+
+            while (ctx.measureText(clamped + ellipsis).width > maxWidth && clamped.length > 0) {
+                clamped = clamped.slice(0, -1);
+            }
+
+            return clamped.length < text.length ? clamped + ellipsis : clamped;
+        }
+
+        function roundRect(ctx, x, y, width, height, radius, fill) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (fill) ctx.fill();
+        }
+
+        function updateInstructionsVisibility() {
+            const instructions = document.getElementById('instructions');
+            if (!instructions) return;
+
+            if (!runtimeSettings.showInstructions) {
+                instructions.style.display = 'none';
+                return;
+            }
+
+            instructions.style.display = state.isLocked ? 'none' : 'block';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = (time - state.lastTime) / 1000;
+            state.lastTime = time;
+
+            if (state.isLocked) {
+                updateMovement(delta);
+            }
+
+            if (chatSprite) {
+                chatSprite.lookAt(camera.position);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateMovement(delta) {
+            const damping = 10.0;
+            const acceleration = 100.0 * runtimeSettings.movementSpeed;
+
+            state.velocity.x -= state.velocity.x * damping * delta;
+            state.velocity.z -= state.velocity.z * damping * delta;
+
+            const inputX = Number(state.moveRight) - Number(state.moveLeft);
+            const inputZ = Number(state.moveBackward) - Number(state.moveForward);
+            const hasInput = inputX !== 0 || inputZ !== 0;
+
+            if (hasInput) {
+                const length = Math.hypot(inputX, inputZ) || 1;
+                const normX = inputX / length;
+                const normZ = inputZ / length;
+                const sinYaw = Math.sin(state.yaw);
+                const cosYaw = Math.cos(state.yaw);
+
+                const worldX = normX * cosYaw - normZ * sinYaw;
+                const worldZ = normX * sinYaw + normZ * cosYaw;
+
+                state.velocity.x -= worldX * acceleration * delta;
+                state.velocity.z -= worldZ * acceleration * delta;
+            }
+
+            camera.position.x += state.velocity.x * delta;
+            camera.position.z += state.velocity.z * delta;
+        }
+    </script>
 </body>
 </html>
