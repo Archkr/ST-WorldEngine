@@ -36,6 +36,8 @@
         const DEFAULT_CHAT_MESSAGE = 'Welcome to the Park!';
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
         const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.0, 0);
+        const CHAT_HISTORY_LIMIT = 12;
+        const CHAT_BUBBLE_HISTORY = 3;
 
         const runtimeSettings = {
             movementSpeed: 1.0,
@@ -55,6 +57,7 @@
             isLocked: false,
             isChatFocused: false,
             chatText: DEFAULT_CHAT_MESSAGE,
+            chatHistory: [],
         };
 
         let camera;
@@ -72,12 +75,11 @@
         window.WorldEngine.updateChatMessage = updateChatMessage;
         window.WorldEngine.applySettings = applySettings;
         window.WorldEngine.ExpressionTextureClient = ExpressionTextureClient;
-        window.WorldEngine.receiveAssistantMessage = updateChatMessage;
+        window.WorldEngine.receiveAssistantMessage = (message) => recordChatMessage('assistant', message);
 
         window.addEventListener(ASSISTANT_MESSAGE_EVENT, (event) => {
             const incoming = event?.detail?.message ?? event?.detail ?? '';
-            appendChatLog('assistant', incoming);
-            updateChatMessage(incoming);
+            recordChatMessage('assistant', incoming);
         });
 
         window.addEventListener('message', handleIncomingMessage);
@@ -103,7 +105,7 @@
 
             buildPark();
             buildAvatar();
-            updateChatMessage(state.chatText);
+            recordChatMessage('assistant', state.chatText);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
@@ -146,9 +148,11 @@
 
             if (data.type === 'world-engine-chat') {
                 if (data.payload?.direction !== 'outgoing') {
-                    appendChatLog(data.payload?.role || 'assistant', data.payload?.text);
+                    recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
                 }
-                updateChatMessage(data.payload?.text);
+                if (data.payload?.direction === 'outgoing') {
+                    recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
+                }
             }
         }
 
@@ -199,6 +203,9 @@
             chatInput?.addEventListener('blur', () => {
                 state.isChatFocused = false;
             });
+
+            renderChatLog();
+            renderChatBubble();
         }
 
         function setupEvents() {
@@ -272,8 +279,7 @@
         }
 
         function dispatchChatMessage(text) {
-            appendChatLog('user', text);
-            updateChatMessage(text);
+            recordChatMessage('user', text);
 
             const payload = { text, role: 'user', direction: 'outgoing' };
 
@@ -350,64 +356,112 @@
             chatSprite.renderOrder = 10;
             chatSprite.frustumCulled = false;
             chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
-            chatSprite.scale.set(4, 2, 1);
+            chatSprite.scale.set(6, 3.5, 1);
             chatSprite.visible = true;
             scene.add(chatSprite);
         }
 
-        function updateChatMessage(message) {
-            state.chatText = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
+        function updateChatMessage(message, role = 'assistant') {
+            recordChatMessage(role, message);
+        }
+
+        function recordChatMessage(role, message) {
+            const normalizedRole = role === 'user' ? 'user' : 'assistant';
+            const text = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
+            const history = state.chatHistory;
+            const lastEntry = history[history.length - 1];
+            const shouldMergeWithLast = lastEntry
+                && lastEntry.role === normalizedRole
+                && (text.startsWith(lastEntry.text) || lastEntry.text.startsWith(text));
+
+            if (shouldMergeWithLast) {
+                lastEntry.text = text;
+            } else {
+                history.push({ role: normalizedRole, text });
+            }
+
+            if (history.length > CHAT_HISTORY_LIMIT) {
+                history.splice(0, history.length - CHAT_HISTORY_LIMIT);
+            }
+
+            state.chatText = text;
+            renderChatLog();
+            renderChatBubble();
+        }
+
+        function renderChatLog() {
+            if (!chatLogElement) return;
+            const fragment = document.createDocumentFragment();
+            state.chatHistory.forEach((entry) => {
+                const row = document.createElement('div');
+                row.className = `chat-log-entry chat-log-${entry.role}`;
+
+                const label = document.createElement('span');
+                label.className = 'chat-log-label';
+                label.textContent = entry.role === 'assistant' ? 'Assistant' : 'You';
+
+                const text = document.createElement('span');
+                text.className = 'chat-log-text';
+                text.textContent = entry.text;
+
+                row.appendChild(label);
+                row.appendChild(text);
+                fragment.appendChild(row);
+            });
+
+            chatLogElement.innerHTML = '';
+            chatLogElement.appendChild(fragment);
+            chatLogElement.scrollTop = chatLogElement.scrollHeight;
+        }
+
+        function renderChatBubble() {
             if (!chatMaterial) return;
 
             if (chatMaterial.map) {
                 chatMaterial.map.dispose();
             }
 
-            chatMaterial.map = createTextTexture(state.chatText);
+            const recentHistory = state.chatHistory.length
+                ? state.chatHistory.slice(-CHAT_BUBBLE_HISTORY)
+                : [{ role: 'assistant', text: DEFAULT_CHAT_MESSAGE }];
+
+            chatMaterial.map = createChatTexture(recentHistory);
             chatMaterial.needsUpdate = true;
         }
 
-        function appendChatLog(role, message) {
-            if (!chatLogElement || (!message && message !== '')) return;
-            const entry = document.createElement('div');
-            entry.className = `chat-log-entry chat-log-${role}`;
-
-            const label = document.createElement('span');
-            label.className = 'chat-log-label';
-            label.textContent = role === 'assistant' ? 'Assistant' : 'You';
-
-            const text = document.createElement('span');
-            text.className = 'chat-log-text';
-            text.textContent = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
-
-            entry.appendChild(label);
-            entry.appendChild(text);
-            chatLogElement.appendChild(entry);
-            chatLogElement.scrollTop = chatLogElement.scrollHeight;
-        }
-
-        function createTextTexture(message) {
+        function createChatTexture(historyEntries) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 512;
-            canvas.height = 256;
+            canvas.width = 768;
+            canvas.height = 384;
 
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            roundRect(ctx, 10, 50, 490, 150, 20, true);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+            roundRect(ctx, 16, 48, canvas.width - 32, canvas.height - 80, 28, true);
 
-            ctx.font = 'Bold 32px Arial';
-            ctx.fillStyle = 'black';
-            ctx.textAlign = 'center';
+            const maxWidth = canvas.width - 140;
+            const lineHeight = 34;
+            const labelOffset = 60;
+            const messageSpacing = 96;
 
-            const maxWidth = 470;
-            const maxLines = 3;
-            const textLines = wrapAndClampText(ctx, message || DEFAULT_CHAT_MESSAGE, maxWidth, maxLines);
-            const lineHeight = 42;
-            const textAreaHeight = 150;
-            const startY = 50 + (textAreaHeight - (lineHeight * textLines.length)) / 2 + lineHeight / 2;
+            historyEntries.forEach((entry, index) => {
+                const baseY = 80 + index * messageSpacing;
+                const label = entry.role === 'assistant' ? 'Assistant' : 'You';
+                const labelColor = entry.role === 'assistant' ? '#93c5fd' : '#34d399';
 
-            textLines.forEach((line, index) => {
-                ctx.fillText(line, 256, startY + index * lineHeight);
+                ctx.font = '700 18px "Inter", Arial, sans-serif';
+                ctx.fillStyle = labelColor;
+                ctx.textAlign = 'left';
+                ctx.fillText(label, 36, baseY + 6);
+
+                ctx.font = '600 24px "Inter", Arial, sans-serif';
+                ctx.fillStyle = '#e2e8f0';
+                const wrapped = wrapAndClampText(ctx, entry.text || DEFAULT_CHAT_MESSAGE, maxWidth, 3);
+                const totalHeight = wrapped.length * lineHeight;
+                const startY = baseY + 12 + (60 - totalHeight) / 2;
+
+                wrapped.forEach((line, lineIndex) => {
+                    ctx.fillText(line, labelOffset, startY + lineIndex * lineHeight);
+                });
             });
 
             const texture = new THREE.CanvasTexture(canvas);
