@@ -9,7 +9,7 @@ const SETTINGS_HTML_URL = new URL('./settings.html', EXTENSION_BASE_URL).toStrin
 const SETTINGS_ROOT_ID = 'world-engine-settings';
 const CHAT_ROLE_USER = 'user';
 const CHAT_ROLE_ASSISTANT = 'assistant';
-const CHAT_SYNC_POLL_INTERVAL = 1500;
+const CHAT_SYNC_POLL_INTERVAL = 10000;
 const CHAT_SYNC_HISTORY_LIMIT = 24;
 
 let chatIntegrationHandle = null;
