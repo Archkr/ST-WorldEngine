@@ -1,4 +1,4 @@
-import { extension_settings, renderExtensionTemplateAsync, saveSettingsDebounced } from '/scripts/extensions.js';
+import { extension_settings, renderExtensionTemplateAsync } from '/scripts/extensions.js';
 import { callGenericPopup, POPUP_TYPE } from '/scripts/popup.js';
 
 const EXTENSION_NAME = 'world-engine';
@@ -106,8 +106,9 @@ function getSettings() {
 }
 
 function persistSettings() {
-    if (typeof saveSettingsDebounced === 'function') {
-        saveSettingsDebounced();
+    const saveSettings = window?.saveSettingsDebounced;
+    if (typeof saveSettings === 'function') {
+        saveSettings();
     }
 }
 
