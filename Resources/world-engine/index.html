@@ -345,7 +345,15 @@
 
             // --- Character Setup ---
             const loader = new THREE.TextureLoader();
-            avatarSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
+            
+            // FIXED: Use a SpriteMaterial that ignores lighting so colors are preserved
+            const avatarMaterial = new THREE.SpriteMaterial({ 
+                transparent: true,
+                toneMapped: false, // Prevent washed-out colors
+                fog: false         // Prevent fog tinting
+            });
+            
+            avatarSprite = new THREE.Sprite(avatarMaterial);
             avatarSprite.scale.set(3, 3, 1);
             
             // Position avatar on top of the steps (0.6 height relative to spawnY)
