@@ -92,27 +92,27 @@
 
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87ceeb);
-            scene.fog = new THREE.Fog(0x87ceeb, 15, 80);
+            scene.fog = new THREE.Fog(0x87ceeb, 20, 90);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, PLAYER_HEIGHT, 10);
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
 
-            const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            const sunLight = new THREE.DirectionalLight(0xfff0dd, 1.2);
             sunLight.position.set(50, 100, 50);
             sunLight.castShadow = true;
             sunLight.shadow.mapSize.width = 2048;
             sunLight.shadow.mapSize.height = 2048;
             sunLight.shadow.camera.near = 0.5;
             sunLight.shadow.camera.far = 150;
-            sunLight.shadow.camera.left = -75;
-            sunLight.shadow.camera.right = 75;
-            sunLight.shadow.camera.top = 75;
-            sunLight.shadow.camera.bottom = -75;
+            sunLight.shadow.camera.left = -80;
+            sunLight.shadow.camera.right = 80;
+            sunLight.shadow.camera.top = 80;
+            sunLight.shadow.camera.bottom = -80;
             sunLight.shadow.bias = -0.0005;
             scene.add(sunLight);
 
@@ -124,6 +124,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
             
             document.body.appendChild(renderer.domElement);
 
@@ -300,11 +301,14 @@
         }
 
         function buildPark() {
-            const floorGeometry = new THREE.PlaneGeometry(200, 200, 32, 32);
+            // 1. Ground Floor
+            const floorGeometry = new THREE.PlaneGeometry(200, 200, 64, 64);
+            // Adding some vertex displacement for uneven ground would be nice, 
+            // but let's stick to a solid stylized shader material first.
             const floorMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x4c9a2a, 
-                roughness: 0.8,
-                metalness: 0.1 
+                color: 0x5da130, // More vibrant grass
+                roughness: 1.0,
+                metalness: 0.0 
             });
             const floor = new THREE.Mesh(floorGeometry, floorMaterial);
             floor.rotation.x = -Math.PI / 2;
@@ -313,38 +317,63 @@
 
             const gridHelper = new THREE.GridHelper(200, 100, 0xffffff, 0xffffff);
             gridHelper.position.y = 0.02;
-            gridHelper.material.opacity = 0.08;
+            gridHelper.material.opacity = 0.05;
             gridHelper.material.transparent = true;
             scene.add(gridHelper);
 
-            const treeGeo = new THREE.ConeGeometry(2, 8, 8);
-            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.6, 2, 8);
-            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+            // 2. Stylized Trees (Layered Cones)
+            const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 1.5, 6);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 1.0 });
+            
+            // We create 3 layers of foliage for each tree
+            const foliageGeo1 = new THREE.ConeGeometry(2.5, 2.5, 7);
+            const foliageGeo2 = new THREE.ConeGeometry(2.0, 2.5, 7);
+            const foliageGeo3 = new THREE.ConeGeometry(1.5, 2.5, 7);
 
-            for (let i = 0; i < 60; i++) {
-                const x = Math.random() * 140 - 70;
-                const z = Math.random() * 140 - 70;
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * 160 - 80;
+                const z = Math.random() * 160 - 80;
 
-                if (Math.abs(x) < 8 && Math.abs(z) < 8) continue;
+                if (Math.abs(x) < 10 && Math.abs(z) < 10) continue;
 
-                const scale = 0.8 + Math.random() * 0.6;
                 const treeGroup = new THREE.Group();
+                const scale = 0.8 + Math.random() * 0.7;
                 
-                const greenShade = new THREE.Color().setHSL(0.35, 0.6, 0.2 + Math.random() * 0.2);
-                const treeMat = new THREE.MeshStandardMaterial({ color: greenShade, roughness: 0.8 });
-
-                const foliage = new THREE.Mesh(treeGeo, treeMat);
-                foliage.position.y = 5;
-                foliage.castShadow = true;
-                foliage.receiveShadow = true;
-
+                // Trunk
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                trunk.position.y = 1;
+                trunk.position.y = 0.75;
                 trunk.castShadow = true;
                 trunk.receiveShadow = true;
-
                 treeGroup.add(trunk);
-                treeGroup.add(foliage);
+
+                // Foliage Shade
+                const hue = 0.3 + Math.random() * 0.05; // Varying green
+                const foliageMat = new THREE.MeshStandardMaterial({ 
+                    color: new THREE.Color().setHSL(hue, 0.7, 0.35), 
+                    roughness: 0.9,
+                    flatShading: true // Low poly look
+                });
+
+                // Layer 1 (Bottom)
+                const f1 = new THREE.Mesh(foliageGeo1, foliageMat);
+                f1.position.y = 2.0;
+                f1.castShadow = true;
+                f1.receiveShadow = true;
+                treeGroup.add(f1);
+
+                // Layer 2 (Middle)
+                const f2 = new THREE.Mesh(foliageGeo2, foliageMat);
+                f2.position.y = 3.2;
+                f2.castShadow = true;
+                f2.receiveShadow = true;
+                treeGroup.add(f2);
+
+                // Layer 3 (Top)
+                const f3 = new THREE.Mesh(foliageGeo3, foliageMat);
+                f3.position.y = 4.4;
+                f3.castShadow = true;
+                f3.receiveShadow = true;
+                treeGroup.add(f3);
 
                 treeGroup.position.set(x, 0, z);
                 treeGroup.scale.set(scale, scale, scale);
@@ -353,10 +382,29 @@
                 scene.add(treeGroup);
             }
 
-            const podiumGeo = new THREE.CylinderGeometry(3, 3.5, 1, 32);
-            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.5 });
+            // 3. Rocks (Low Poly Decoration)
+            const rockGeo = new THREE.DodecahedronGeometry(1, 0); // Low poly sphere
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true });
+            
+            for(let j = 0; j < 15; j++) {
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                const x = Math.random() * 140 - 70;
+                const z = Math.random() * 140 - 70;
+                 if (Math.abs(x) < 5 && Math.abs(z) < 5) continue;
+
+                rock.position.set(x, 0.4, z);
+                const rScale = 0.4 + Math.random() * 0.6;
+                rock.scale.set(rScale * 1.5, rScale, rScale * 1.2);
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                scene.add(rock);
+            }
+
+            // 4. Podium
+            const podiumGeo = new THREE.CylinderGeometry(3.5, 4.0, 0.8, 8); // Hex/Octagon shape
+            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x909090, roughness: 0.6, flatShading: true });
             const podium = new THREE.Mesh(podiumGeo, podiumMat);
-            podium.position.set(0, 0.5, 0);
+            podium.position.set(0, 0.4, 0);
             podium.receiveShadow = true;
             podium.castShadow = true;
             scene.add(podium);
@@ -370,11 +418,12 @@
             avatarSprite.scale.set(3, 3, 1);
             scene.add(avatarSprite);
 
-            const shadowGeo = new THREE.CircleGeometry(1.2, 32);
-            const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+            // Improved Shadow Blob
+            const shadowGeo = new THREE.CircleGeometry(1.4, 32);
+            const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
             const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
             shadowMesh.rotation.x = -Math.PI / 2;
-            shadowMesh.position.set(0, 1.05, 0);
+            shadowMesh.position.set(0, 0.82, 0); // Just above podium
             scene.add(shadowMesh);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
