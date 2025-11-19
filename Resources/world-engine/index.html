@@ -37,7 +37,7 @@
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
         const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.4, 0); 
         const CHAT_HISTORY_LIMIT = 12;
-        const CHAT_WORLD_WIDTH = 7; // Fixed width in 3D world units
+        const CHAT_WORLD_WIDTH = 7;
 
         const runtimeSettings = {
             movementSpeed: 1.0,
@@ -86,23 +86,45 @@
 
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87ceeb);
-            scene.fog = new THREE.Fog(0x87ceeb, 10, 100);
+            scene.fog = new THREE.Fog(0x87ceeb, 15, 80); // Smoother fog
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.6, 10);
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
 
-            const light = new THREE.HemisphereLight(0xffffff, 0x777788, 2.5);
-            light.position.set(0.5, 1, 0.75);
-            scene.add(light);
+            // --- Lighting Upgrade ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
 
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            sunLight.position.set(50, 100, 50);
+            sunLight.castShadow = true;
+            
+            // Optimize Shadow Map
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 150;
+            sunLight.shadow.camera.left = -75;
+            sunLight.shadow.camera.right = 75;
+            sunLight.shadow.camera.top = 75;
+            sunLight.shadow.camera.bottom = -75;
+            sunLight.shadow.bias = -0.0005;
+            
+            scene.add(sunLight);
+
+            // --- World Generation ---
             buildPark();
             buildAvatar();
 
+            // --- Renderer Upgrade ---
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; // Enable Shadows
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer edges
+            
             document.body.appendChild(renderer.domElement);
 
             setupPointerLock(renderer.domElement);
@@ -276,37 +298,71 @@
         }
 
         function buildPark() {
-            const floorGeometry = new THREE.PlaneGeometry(200, 200, 20, 20);
-            const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x4c9a2a });
+            // 1. Ground Floor (Receives Shadows)
+            const floorGeometry = new THREE.PlaneGeometry(200, 200, 32, 32);
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x4c9a2a, 
+                roughness: 0.8,
+                metalness: 0.1 
+            });
             const floor = new THREE.Mesh(floorGeometry, floorMaterial);
             floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true; // Important for depth
             scene.add(floor);
 
-            const treeGeo = new THREE.ConeGeometry(2, 8, 8);
-            const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57 });
-            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.5, 2);
-            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+            // 2. Grid Helper (Simulation Aesthetic)
+            const gridHelper = new THREE.GridHelper(200, 100, 0xffffff, 0xffffff);
+            gridHelper.position.y = 0.02; // Slight offset to prevent z-fighting
+            gridHelper.material.opacity = 0.08;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
 
-            for (let i = 0; i < 40; i++) {
+            // 3. Trees with Variation
+            const treeGeo = new THREE.ConeGeometry(2, 8, 8);
+            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.6, 2, 8);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+
+            for (let i = 0; i < 60; i++) {
+                const x = Math.random() * 140 - 70;
+                const z = Math.random() * 140 - 70;
+
+                // Don't spawn trees on the podium
+                if (Math.abs(x) < 8 && Math.abs(z) < 8) continue;
+
+                const scale = 0.8 + Math.random() * 0.6; // Variation in size
                 const treeGroup = new THREE.Group();
+                
+                // Randomize green shade slightly
+                const greenShade = new THREE.Color().setHSL(0.35, 0.6, 0.2 + Math.random() * 0.2);
+                const treeMat = new THREE.MeshStandardMaterial({ color: greenShade, roughness: 0.8 });
+
                 const foliage = new THREE.Mesh(treeGeo, treeMat);
                 foliage.position.y = 5;
+                foliage.castShadow = true;
+                foliage.receiveShadow = true;
+
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
                 trunk.position.y = 1;
+                trunk.castShadow = true;
+                trunk.receiveShadow = true;
+
                 treeGroup.add(trunk);
                 treeGroup.add(foliage);
-                const x = Math.random() * 100 - 50;
-                const z = Math.random() * 100 - 50;
-                if (Math.abs(x) > 5 || Math.abs(z) > 5) {
-                    treeGroup.position.set(x, 0, z);
-                    scene.add(treeGroup);
-                }
+
+                treeGroup.position.set(x, 0, z);
+                treeGroup.scale.set(scale, scale, scale);
+                treeGroup.rotation.y = Math.random() * Math.PI * 2; // Random rotation
+                
+                scene.add(treeGroup);
             }
-            // Podium
-            const podiumGeo = new THREE.CylinderGeometry(2, 2.5, 1, 32);
-            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
+
+            // 4. Podium
+            const podiumGeo = new THREE.CylinderGeometry(3, 3.5, 1, 32);
+            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.5 });
             const podium = new THREE.Mesh(podiumGeo, podiumMat);
             podium.position.set(0, 0.5, 0);
+            podium.receiveShadow = true;
+            podium.castShadow = true;
             scene.add(podium);
         }
 
@@ -318,6 +374,14 @@
             avatarSprite.scale.set(3, 3, 1);
             scene.add(avatarSprite);
 
+            // Fake Shadow for Avatar (Since Sprites don't cast ground shadows well)
+            const shadowGeo = new THREE.CircleGeometry(1.2, 32);
+            const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+            const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+            shadowMesh.rotation.x = -Math.PI / 2;
+            shadowMesh.position.set(0, 1.05, 0); // Just above podium
+            scene.add(shadowMesh);
+
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
 
@@ -325,7 +389,6 @@
             chatSprite = new THREE.Sprite(chatMaterial);
             chatSprite.renderOrder = 10;
             chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
-            // Initial scale, will be dynamic later
             chatSprite.scale.set(CHAT_WORLD_WIDTH, 3.5, 1);
             scene.add(chatSprite);
         }
@@ -360,19 +423,15 @@
             }
             
             chatSprite.visible = true;
-            // Generate texture and get its aspect ratio
             const { texture, aspectRatio } = createChatTexture(entries);
             chatMaterial.map = texture;
             chatMaterial.needsUpdate = true;
             
-            // Update Sprite Scale to match text height dynamics
-            // We keep width fixed (CHAT_WORLD_WIDTH) and scale height
             const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
             chatSprite.scale.set(CHAT_WORLD_WIDTH, newHeight, 1);
-            
-            // Adjust offset slightly based on height so it grows UP, not down
-            const baseOffset = 2.4; // Bottom of avatar head roughly
+            const baseOffset = 2.4; 
             chatSprite.position.y = avatarSprite.position.y + baseOffset + (newHeight * 0.4);
+            chatSprite.userData.baseY = chatSprite.position.y; // Reset bobbing base
         }
 
         function createChatTexture(historyEntries) {
@@ -384,28 +443,23 @@
             const maxWidth = canvasWidth - (padding * 2);
             const tailHeight = 30;
 
-            // Create a temp canvas to measure text
             const measureCanvas = document.createElement('canvas');
             const mCtx = measureCanvas.getContext('2d');
             mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
             
-            // Wrap text to find out how tall the canvas needs to be
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
             const textBlockHeight = wrappedLines.length * lineHeight;
             const totalHeight = padding + headerHeight + textBlockHeight + padding + tailHeight;
 
-            // Create the actual canvas with dynamic height
             const canvas = document.createElement('canvas');
             canvas.width = canvasWidth;
-            canvas.height = Math.max(256, totalHeight); // Minimum height for aesthetics
+            canvas.height = Math.max(256, totalHeight);
             const ctx = canvas.getContext('2d');
 
-            // --- Draw Bubble ---
-            const bubbleHeight = canvas.height - tailHeight - 20; // Leave room for tail and shadow
+            const bubbleHeight = canvas.height - tailHeight - 20;
             const startX = 10;
-            const startY = 10; // Top padding
+            const startY = 10; 
 
-            // Glass Background
             const gradient = ctx.createLinearGradient(0, 0, 0, bubbleHeight);
             gradient.addColorStop(0, 'rgba(20, 25, 35, 0.90)');
             gradient.addColorStop(1, 'rgba(10, 12, 16, 0.98)');
@@ -414,18 +468,15 @@
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.lineWidth = 4;
             
-            // Shadow
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.shadowBlur = 25;
             ctx.shadowOffsetY = 12;
 
             roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
             
-            // Reset Shadow
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
 
-            // Tail
             ctx.beginPath();
             const tailX = canvas.width / 2;
             const tailYPos = startY + bubbleHeight;
@@ -435,13 +486,11 @@
             ctx.fillStyle = 'rgba(10, 12, 16, 0.98)';
             ctx.fill();
 
-            // Text Header
             ctx.font = 'bold 28px "Inter", sans-serif';
             ctx.fillStyle = '#60a5fa';
             ctx.textBaseline = 'top';
             ctx.fillText("ASSISTANT", startX + padding, startY + padding);
 
-            // Text Body
             ctx.font = '500 32px "Inter", sans-serif';
             ctx.fillStyle = '#f1f5f9';
             
@@ -517,14 +566,10 @@
 
             if (chatSprite && chatSprite.visible) {
                 const bobOffset = Math.sin(time * 0.002) * 0.05;
-                // position.y was set in renderChatBubble, we modify it slightly for effect
-                // But we need to be careful not to override the scaling logic, so we just add to the base y we set earlier
-                // Ideally we store a baseHeight in the sprite userData
                 if (chatSprite.userData.baseY === undefined) {
                     chatSprite.userData.baseY = chatSprite.position.y;
                 }
-                // Update base Y if scale changed recently (we can track this via userData too or just accept a small jump)
-                // For simplicity, we re-calculate lookAt every frame
+                chatSprite.position.y = chatSprite.userData.baseY + bobOffset;
                 chatSprite.lookAt(camera.position);
             }
 
