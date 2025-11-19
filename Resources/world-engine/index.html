@@ -34,17 +34,19 @@
         import * as THREE from 'three';
         import { ExpressionTextureClient } from './dist/expression-listener.js';
 
-        const DEFAULT_CHAT_MESSAGE = 'Welcome to the Forest!';
+        const DEFAULT_CHAT_MESSAGE = 'The river looks peaceful today...';
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
         const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.6, 0); 
         const CHAT_HISTORY_LIMIT = 12;
         const CHAT_WORLD_WIDTH = 7;
         const PLAYER_EYE_HEIGHT = 1.7;
-        const GRAVITY = 28.0;
-        const JUMP_FORCE = 12.0;
-        const WORLD_SIZE = 250;
-        const TERRAIN_RES = 128;
+        const GRAVITY = 30.0;
+        const JUMP_FORCE = 11.0;
         
+        // World Config
+        const WORLD_SIZE = 200;
+        const TIME_SCALE = 0.5;
+
         const runtimeSettings = {
             movementSpeed: 1.0,
             invertLook: false,
@@ -66,15 +68,21 @@
             isChatFocused: false,
             chatText: DEFAULT_CHAT_MESSAGE,
             chatHistory: [],
-            time: 0,
+            globalTime: 0,
         };
 
         let camera, scene, renderer;
         let chatMaterial, chatSprite, avatarSprite;
         let expressionClient;
         let chatInput, chatForm;
-        let fireflies, toonGradientMap;
-        let windUniforms = { time: { value: 0 } };
+        let fireflies;
+        
+        // Global Uniforms for Wind
+        const globalUniforms = {
+            time: { value: 0 },
+            windStrength: { value: 0.15 },
+            windDirection: { value: new THREE.Vector3(1.0, 0, 0.5).normalize() }
+        };
 
         window.WorldEngine = window.WorldEngine || {};
         window.WorldEngine.updateChatMessage = updateChatMessage;
@@ -95,32 +103,30 @@
         function init() {
             parseSettingsFromQuery();
 
-            // Generate Toon Gradient Texture
-            toonGradientMap = createToonGradient();
-
             scene = new THREE.Scene();
-            // Anime Sky Blue
-            scene.background = new THREE.Color(0x87CEEB);
-            // Soft white fog
-            scene.fog = new THREE.FogExp2(0x87CEEB, 0.012);
+            // Sky color from reference (Bright Blue)
+            scene.background = new THREE.Color(0x68aaff);
+            // Fog to blend distant trees
+            scene.fog = new THREE.FogExp2(0x68aaff, 0.018);
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
             camera.rotation.order = 'YXZ';
             camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
             
-            const startY = getTerrainHeight(0, 10) + PLAYER_EYE_HEIGHT;
-            camera.position.set(0, startY, 10);
+            // Start player on the river bank
+            const startY = getTerrainHeight(0, 15) + PLAYER_EYE_HEIGHT;
+            camera.position.set(0, startY, 15);
 
             // --- Lighting ---
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            const ambientLight = new THREE.AmbientLight(0xcce0ff, 0.6);
             scene.add(ambientLight);
 
-            const sunLight = new THREE.DirectionalLight(0xfff0dd, 1.1);
-            sunLight.position.set(60, 100, 40);
+            const sunLight = new THREE.DirectionalLight(0xfff8e0, 1.3);
+            sunLight.position.set(50, 80, 30);
             sunLight.castShadow = true;
             sunLight.shadow.mapSize.width = 2048;
             sunLight.shadow.mapSize.height = 2048;
-            const d = 120;
+            const d = 80;
             sunLight.shadow.camera.left = -d;
             sunLight.shadow.camera.right = d;
             sunLight.shadow.camera.top = d;
@@ -128,9 +134,10 @@
             sunLight.shadow.bias = -0.0005;
             scene.add(sunLight);
 
-            const rimLight = new THREE.DirectionalLight(0x88ccff, 0.4);
-            rimLight.position.set(-50, 20, -50);
-            scene.add(rimLight);
+            // Backlight for rim effect
+            const backLight = new THREE.DirectionalLight(0x445588, 0.4);
+            backLight.position.set(-30, 20, -50);
+            scene.add(backLight);
 
             buildWorld();
             buildAvatar();
@@ -141,6 +148,8 @@
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
             
             document.body.appendChild(renderer.domElement);
 
@@ -150,210 +159,268 @@
             updateInstructionsVisibility();
         }
 
-        function createToonGradient() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 4;
-            canvas.height = 1;
-            const context = canvas.getContext('2d');
-            const gradient = context.createLinearGradient(0, 0, 4, 0);
-            // 3 Distinct bands for Cel Shading
-            gradient.addColorStop(0, '#808080');
-            gradient.addColorStop(0.5, '#c0c0c0');
-            gradient.addColorStop(1, '#ffffff');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 4, 1);
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.magFilter = THREE.NearestFilter; // Sharp transitions
-            texture.minFilter = THREE.NearestFilter;
-            return texture;
+        // --- SHADERS ---
+
+        // Inject wind logic into standard materials
+        function makeWindMaterial(color) {
+            const mat = new THREE.MeshStandardMaterial({
+                color: color,
+                roughness: 0.8,
+                flatShading: true, // Stylized look
+            });
+
+            mat.onBeforeCompile = (shader) => {
+                shader.uniforms.time = globalUniforms.time;
+                shader.uniforms.windStrength = globalUniforms.windStrength;
+                
+                shader.vertexShader = `
+                    uniform float time;
+                    uniform float windStrength;
+                    ${shader.vertexShader}
+                `;
+                
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    
+                    // Simple Wind Logic
+                    // Bend x and z based on y height
+                    float windFactor = max(0.0, position.y - 0.5);
+                    float sway = sin(time * 1.5 + position.x * 0.5 + position.z * 0.5) * 0.1;
+                    float sway2 = cos(time * 2.0 + position.x * 0.3) * 0.05;
+                    
+                    transformed.x += (sway + sway2) * windFactor * windStrength;
+                    transformed.z += (sway - sway2) * windFactor * windStrength;
+                    `
+                );
+            };
+            
+            // Make it a unique instance so uniforms bind correctly
+            return mat;
         }
 
-        function getNoise(x, z) {
-            const scale1 = 0.015;
-            const scale2 = 0.03;
-            const val1 = Math.sin(x * scale1) * Math.cos(z * scale1);
-            const val2 = Math.sin(x * scale2 + z * scale2) * 0.5;
-            return (val1 + val2) * 5.0;
-        }
+        // --- Terrain Math ---
 
         function getTerrainHeight(x, z) {
-            const h = getNoise(x, z);
-            const dist = Math.sqrt(x*x + z*z);
-            const podiumRadius = 12;
-            if (dist < podiumRadius) {
-                const factor = Math.max(0, (dist - 4) / (podiumRadius - 4));
-                return h * factor;
+            // Base rolling hills
+            const hill = (Math.sin(x * 0.04) + Math.cos(z * 0.04)) * 2.0;
+            
+            // River Channel (carve a path along X axis roughly)
+            // We want a river flowing roughly along Z=0 to Z=20 area? 
+            // Let's make it wind a bit.
+            const riverPath = Math.sin(x * 0.05) * 10; 
+            const distToRiver = Math.abs(z - riverPath);
+            
+            let height = hill + 3.0; // Base height
+            
+            // Carve river
+            if (distToRiver < 12.0) {
+                // Smooth carving
+                const depth = Math.cos(distToRiver * 0.15) * 5.0;
+                height -= Math.max(0, depth);
             }
-            return h;
+            
+            return height;
         }
 
         function buildWorld() {
-            // 1. Smooth Terrain
-            const geometry = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, TERRAIN_RES, TERRAIN_RES);
-            geometry.rotateX(-Math.PI / 2);
-            const pos = geometry.attributes.position;
+            // 1. Terrain
+            const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 128, 128);
+            geo.rotateX(-Math.PI / 2);
+            const pos = geo.attributes.position;
             for (let i = 0; i < pos.count; i++) {
                 const x = pos.getX(i);
                 const z = pos.getZ(i);
                 pos.setY(i, getTerrainHeight(x, z));
             }
-            geometry.computeVertexNormals();
-
-            const material = new THREE.MeshToonMaterial({
-                color: 0x5faa48, // Lush green
-                gradientMap: toonGradientMap,
-            });
+            geo.computeVertexNormals();
             
-            const terrain = new THREE.Mesh(geometry, material);
+            const groundMat = new THREE.MeshStandardMaterial({ 
+                color: 0x4caf50, 
+                roughness: 1,
+                flatShading: false // Smooth terrain like reference
+            });
+            const terrain = new THREE.Mesh(geo, groundMat);
             terrain.receiveShadow = true;
             scene.add(terrain);
 
-            // 2. Water
+            // 2. Water Plane
             const waterGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE);
             waterGeo.rotateX(-Math.PI / 2);
             const waterMat = new THREE.MeshStandardMaterial({
-                color: 0x4fa4b6,
+                color: 0x3366ff,
                 transparent: true,
-                opacity: 0.6,
-                roughness: 0.0,
-                metalness: 0.1
+                opacity: 0.75,
+                roughness: 0.1,
+                metalness: 0.2
             });
             const water = new THREE.Mesh(waterGeo, waterMat);
-            water.position.y = -3.0;
+            water.position.y = 0.5; // Water Level
             scene.add(water);
 
-            buildGrass();
-            buildTrees();
+            // 3. Scenery
+            buildVegetation();
+            buildRuins();
             buildFireflies();
-
-            // 3. Ruin Podium
-            const podiumGeo = new THREE.CylinderGeometry(4, 4.5, 0.8, 16); // Smoother cylinder
-            const podiumMat = new THREE.MeshToonMaterial({ color: 0x999999, gradientMap: toonGradientMap });
-            const podium = new THREE.Mesh(podiumGeo, podiumMat);
-            podium.position.set(0, 0.3, 0);
-            podium.receiveShadow = true;
-            podium.castShadow = true;
-            scene.add(podium);
         }
 
-        function buildGrass() {
+        function buildVegetation() {
+            // -- Instanced Grass --
+            const grassGeo = new THREE.PlaneGeometry(0.3, 0.8);
+            grassGeo.translate(0, 0.4, 0);
+            const grassMat = makeWindMaterial(0x88cc44);
+            grassMat.side = THREE.DoubleSide;
+            
+            const grassCount = 8000;
+            const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+            grassMesh.receiveShadow = true;
+            grassMesh.castShadow = false; // Too expensive
+            
             const dummy = new THREE.Object3D();
-            const grassCount = 6000; // More grass
+            let grassIdx = 0;
             
-            // Curved Blade shape
-            const shape = new THREE.Shape();
-            shape.moveTo(0, 0);
-            shape.quadraticCurveTo(0.1, 0.4, 0, 1); // Curve tip
-            shape.quadraticCurveTo(-0.1, 0.4, 0, 0);
-            const geo = new THREE.ShapeGeometry(shape);
-            geo.scale(0.2, 0.7, 0.2);
+            // -- Trees --
+            const trunkGeo = new THREE.CylinderGeometry(0.6, 0.8, 3, 6);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+            
+            const foliageGeo = new THREE.ConeGeometry(3.5, 5, 7);
+            const foliageMat = makeWindMaterial(0x2d6e32); // Darker pine green
+            
+            // Rocks
+            const rockGeo = new THREE.DodecahedronGeometry(1.0, 0);
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true });
 
-            const mat = new THREE.MeshToonMaterial({
-                color: 0x88cc55,
-                gradientMap: toonGradientMap,
-                side: THREE.DoubleSide
-            });
-
-            const mesh = new THREE.InstancedMesh(geo, mat, grassCount);
-            mesh.receiveShadow = true;
-
-            // Wind effect logic would go here, but sticking to static for perf stability for now
-            // Just scattering nicely
-            let i = 0;
-            while(i < grassCount) {
-                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.9;
-                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.9;
+            for (let i = 0; i < 60; i++) {
+                const x = (Math.random() - 0.5) * 160;
+                const z = (Math.random() - 0.5) * 160;
                 const y = getTerrainHeight(x, z);
 
-                if (y < -2.5 || (Math.abs(x) < 5 && Math.abs(z) < 5)) continue;
+                // Don't spawn underwater or too close to spawn
+                if (y < 1.0 || (Math.abs(x) < 5 && Math.abs(z-15) < 5)) {
+                    continue;
+                }
 
-                dummy.position.set(x, y, z);
-                dummy.rotation.y = Math.random() * Math.PI;
-                dummy.rotation.x = (Math.random() - 0.5) * 0.2; // Slight tilt
-                dummy.scale.setScalar(0.8 + Math.random() * 0.6);
-                dummy.updateMatrix();
-                mesh.setMatrixAt(i, dummy.matrix);
+                // Spawn Grass Clumps
+                if (Math.random() > 0.3 && grassIdx < grassCount - 50) {
+                    for (let g=0; g<40; g++) {
+                        const gx = x + (Math.random() - 0.5) * 10;
+                        const gz = z + (Math.random() - 0.5) * 10;
+                        const gy = getTerrainHeight(gx, gz);
+                        if (gy > 0.6) {
+                            dummy.position.set(gx, gy, gz);
+                            dummy.rotation.y = Math.random() * Math.PI;
+                            dummy.rotation.x = (Math.random() - 0.5) * 0.3;
+                            dummy.scale.setScalar(0.8 + Math.random() * 0.6);
+                            dummy.updateMatrix();
+                            grassMesh.setMatrixAt(grassIdx++, dummy.matrix);
+                        }
+                    }
+                }
                 
-                const color = new THREE.Color(0x77bb44);
-                color.offsetHSL(0, 0, Math.random() * 0.15);
-                mesh.setColorAt(i, color);
-                i++;
+                // Spawn Trees (Tall Pines)
+                if (Math.random() > 0.6) {
+                    const treeGroup = new THREE.Group();
+                    treeGroup.position.set(x, y, z);
+                    
+                    // Scale varies height
+                    const scale = 1.0 + Math.random() * 0.8;
+                    
+                    // Trunk
+                    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                    trunk.position.y = 1.5;
+                    trunk.castShadow = true;
+                    trunk.receiveShadow = true;
+                    treeGroup.add(trunk);
+
+                    // 3 Layers of foliage high up
+                    for(let L=0; L<3; L++) {
+                        const f = new THREE.Mesh(foliageGeo, foliageMat);
+                        f.position.y = 4.0 + (L * 2.5);
+                        const s = 1.2 - (L * 0.2);
+                        f.scale.set(s, 1, s);
+                        f.castShadow = true;
+                        f.receiveShadow = true;
+                        treeGroup.add(f);
+                    }
+
+                    treeGroup.scale.set(scale, scale, scale);
+                    // Random rotation
+                    treeGroup.rotation.y = Math.random() * Math.PI;
+                    scene.add(treeGroup);
+                }
+                
+                // Spawn Rocks near water
+                if (y < 2.5 && Math.random() > 0.5) {
+                    const rock = new THREE.Mesh(rockGeo, rockMat);
+                    rock.position.set(x, y + 0.2, z);
+                    rock.scale.setScalar(0.5 + Math.random());
+                    rock.rotation.set(Math.random(), Math.random(), Math.random());
+                    rock.castShadow = true;
+                    rock.receiveShadow = true;
+                    scene.add(rock);
+                }
             }
-            scene.add(mesh);
+            scene.add(grassMesh);
         }
 
-        function buildTrees() {
-            // High-Fidelity "Fluffy" Trees using distorted Icosahedrons
-            // This creates a soft, cloud-like foliage look common in anime backgrounds
+        function buildRuins() {
+            // Broken Bridge pieces over the river
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
             
-            const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 2, 8);
-            const trunkMat = new THREE.MeshToonMaterial({ color: 0x5c4033, gradientMap: toonGradientMap });
+            // Bridge 1 part
+            const plank = new THREE.BoxGeometry(4, 0.2, 1);
+            const group1 = new THREE.Group();
+            
+            const p1 = new THREE.Mesh(plank, woodMat);
+            p1.castShadow = true;
+            group1.add(p1);
+            
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1, 0.2), woodMat);
+            post.position.set(1.8, 0.5, 0.4);
+            group1.add(post);
+            const post2 = post.clone();
+            post2.position.set(-1.8, 0.5, -0.4);
+            group1.add(post2);
 
-            // Fluffy leaves
-            const leafGeo = new THREE.IcosahedronGeometry(1, 0); // Low detail sphere, looks like a clump
-            const leafMat = new THREE.MeshToonMaterial({ color: 0x3a6b35, gradientMap: toonGradientMap });
+            // Place broken bridge in river
+            group1.position.set(10, 1.0, 5); // Positioned to look like it fell
+            group1.rotation.z = 0.2;
+            group1.rotation.y = 0.5;
+            scene.add(group1);
+            
+            const group2 = group1.clone();
+            group2.position.set(6, 1.2, 3);
+            group2.rotation.z = -0.1;
+            group2.rotation.y = 0.4;
+            scene.add(group2);
 
-            const treeCount = 60;
-
-            for (let i = 0; i < treeCount; i++) {
-                const treeGroup = new THREE.Group();
-                const x = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
-                const z = (Math.random() - 0.5) * WORLD_SIZE * 0.85;
-                const y = getTerrainHeight(x, z);
-
-                if (y < -1.5 || (Math.abs(x) < 9 && Math.abs(z) < 9)) continue;
-
-                // Trunk
-                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                trunk.position.y = 1.0;
-                trunk.castShadow = true;
-                trunk.receiveShadow = true;
-                treeGroup.add(trunk);
-
-                // Clump 1 (Bottom)
-                const l1 = new THREE.Mesh(leafGeo, leafMat);
-                l1.position.y = 2.5;
-                l1.scale.set(2.5, 1.8, 2.5);
-                l1.castShadow = true;
-                l1.receiveShadow = true;
-                treeGroup.add(l1);
-
-                // Clump 2 (Mid)
-                const l2 = new THREE.Mesh(leafGeo, leafMat);
-                l2.position.y = 4.0;
-                l2.scale.set(2.0, 1.6, 2.0);
-                l2.castShadow = true;
-                l2.receiveShadow = true;
-                treeGroup.add(l2);
-
-                // Clump 3 (Top)
-                const l3 = new THREE.Mesh(leafGeo, leafMat);
-                l3.position.y = 5.2;
-                l3.scale.set(1.4, 1.4, 1.4);
-                l3.castShadow = true;
-                l3.receiveShadow = true;
-                treeGroup.add(l3);
-
-                treeGroup.position.set(x, y, z);
-                const scale = 0.9 + Math.random() * 0.5;
-                treeGroup.scale.set(scale, scale, scale);
-                treeGroup.rotation.y = Math.random() * Math.PI;
-                
-                scene.add(treeGroup);
-            }
+            // Spawn Podium (Old Stone)
+            const podiumGeo = new THREE.CylinderGeometry(3, 3.5, 0.5, 8);
+            const podiumMat = new THREE.MeshStandardMaterial({ color: 0x777777, flatShading: true });
+            const podium = new THREE.Mesh(podiumGeo, podiumMat);
+            
+            // Find ground height for spawn
+            const spawnH = getTerrainHeight(0, 15);
+            podium.position.set(0, spawnH + 0.25, 15);
+            podium.receiveShadow = true;
+            scene.add(podium);
+            
+            // Move avatar to podium
+            avatarSprite.position.set(0, spawnH + 2.5, 15);
         }
 
         function buildFireflies() {
-            const count = 150;
+            const count = 200;
             const geometry = new THREE.BufferGeometry();
             const positions = [];
             const phases = [];
 
             for(let i=0; i<count; i++) {
                 positions.push(
-                    (Math.random() - 0.5) * 70,
-                    1 + Math.random() * 4,
-                    (Math.random() - 0.5) * 70
+                    (Math.random() - 0.5) * 100,
+                    1 + Math.random() * 5,
+                    (Math.random() - 0.5) * 100
                 );
                 phases.push(Math.random() * Math.PI * 2);
             }
@@ -362,10 +429,10 @@
             geometry.setAttribute('phase', new THREE.Float32BufferAttribute(phases, 1));
 
             const material = new THREE.PointsMaterial({
-                color: 0xffffaa,
-                size: 0.2,
+                color: 0xaaffaa, // Greenish magical look
+                size: 0.3,
                 transparent: true,
-                opacity: 0.9,
+                opacity: 0.8,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false
             });
@@ -376,18 +443,11 @@
 
         function buildAvatar() {
             const textureLoader = new THREE.TextureLoader();
-            const material = new THREE.SpriteMaterial();
+            const material = new THREE.SpriteMaterial({ transparent: true });
             avatarSprite = new THREE.Sprite(material);
-            avatarSprite.position.set(0, 2.5, 0);
             avatarSprite.scale.set(3, 3, 1);
+            // Position set in buildRuins to match podium
             scene.add(avatarSprite);
-
-            const shadowGeo = new THREE.CircleGeometry(1.2, 32);
-            const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
-            const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
-            shadowMesh.rotation.x = -Math.PI / 2;
-            shadowMesh.position.set(0, 0.72, 0);
-            scene.add(shadowMesh);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
             if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
@@ -395,23 +455,19 @@
             chatMaterial = new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
             chatSprite = new THREE.Sprite(chatMaterial);
             chatSprite.renderOrder = 10;
-            chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
+            // Initial position, updated in loop
             chatSprite.scale.set(CHAT_WORLD_WIDTH, 3.5, 1);
             scene.add(chatSprite);
         }
 
-        function updateChatMessage(message, role = 'assistant') {
-            recordChatMessage(role, message);
-        }
-
+        // --- Chat System (Same as before) ---
+        function updateChatMessage(message, role = 'assistant') { recordChatMessage(role, message); }
         function recordChatMessage(role, message) {
             const normalizedRole = role === 'user' ? 'user' : 'assistant';
             const text = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
             const history = state.chatHistory;
-            
             history.push({ role: normalizedRole, text });
             if (history.length > CHAT_HISTORY_LIMIT) history.shift();
-            
             renderChatBubble();
         }
 
@@ -423,10 +479,7 @@
             const displayEntry = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
             const entries = displayEntry ? [displayEntry] : (state.chatHistory.length === 0 ? [{role:'assistant', text:DEFAULT_CHAT_MESSAGE}] : []);
             
-            if (entries.length === 0) {
-                chatSprite.visible = false;
-                return;
-            }
+            if (entries.length === 0) { chatSprite.visible = false; return; }
             
             chatSprite.visible = true;
             const { texture, aspectRatio } = createChatTexture(entries);
@@ -435,26 +488,21 @@
             
             const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
             chatSprite.scale.set(CHAT_WORLD_WIDTH, newHeight, 1);
-            const baseOffset = 2.6; 
-            chatSprite.position.y = avatarSprite.position.y + baseOffset + (newHeight * 0.4);
-            chatSprite.userData.baseY = chatSprite.position.y;
+            // Adjust y position logic in animate loop
+            chatSprite.userData.height = newHeight;
         }
 
         function createChatTexture(historyEntries) {
             const entry = historyEntries[0];
-            const padding = 40;
-            const headerHeight = 60;
-            const lineHeight = 44;
-            const canvasWidth = 1024;
+            const padding = 40, headerHeight = 60, lineHeight = 44, canvasWidth = 1024;
             const maxWidth = canvasWidth - (padding * 2);
             const tailHeight = 30;
 
-            const measureCanvas = document.createElement('canvas');
-            const mCtx = measureCanvas.getContext('2d');
+            const mCanvas = document.createElement('canvas');
+            const mCtx = mCanvas.getContext('2d');
             mCtx.font = '500 32px "Inter", "Segoe UI", system-ui, sans-serif';
             const wrappedLines = wrapText(mCtx, entry.text, maxWidth);
-            const textBlockHeight = wrappedLines.length * lineHeight;
-            const totalHeight = padding + headerHeight + textBlockHeight + padding + tailHeight;
+            const totalHeight = padding + headerHeight + (wrappedLines.length * lineHeight) + padding + tailHeight;
 
             const canvas = document.createElement('canvas');
             canvas.width = canvasWidth;
@@ -462,24 +510,21 @@
             const ctx = canvas.getContext('2d');
 
             const bubbleHeight = canvas.height - tailHeight - 20;
-            const startX = 10;
-            const startY = 10; 
+            const startX = 10, startY = 10; 
 
-            // Glassy Blue Background for Fantasy Feel
             const gradient = ctx.createLinearGradient(0, 0, 0, bubbleHeight);
-            gradient.addColorStop(0, 'rgba(20, 30, 45, 0.90)');
-            gradient.addColorStop(1, 'rgba(10, 15, 25, 0.98)');
+            gradient.addColorStop(0, 'rgba(25, 35, 50, 0.95)');
+            gradient.addColorStop(1, 'rgba(15, 20, 30, 0.98)');
 
             ctx.fillStyle = gradient;
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.2)';
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
             ctx.lineWidth = 4;
-            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowColor = 'rgba(0,0,0,0.7)';
             ctx.shadowBlur = 25;
-            ctx.shadowOffsetY = 12;
-
+            ctx.shadowOffsetY = 15;
+            
             roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 40, true, true);
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
 
             ctx.beginPath();
             const tailX = canvas.width / 2;
@@ -487,7 +532,7 @@
             ctx.moveTo(tailX - 25, tailYPos);
             ctx.lineTo(tailX, tailYPos + tailHeight);
             ctx.lineTo(tailX + 25, tailYPos);
-            ctx.fillStyle = 'rgba(10, 15, 25, 0.98)';
+            ctx.fillStyle = 'rgba(15, 20, 30, 0.98)';
             ctx.fill();
 
             ctx.font = 'bold 28px "Inter", sans-serif';
@@ -498,10 +543,7 @@
             ctx.font = '500 32px "Inter", sans-serif';
             ctx.fillStyle = '#f1f5f9';
             let textY = startY + padding + headerHeight;
-            wrappedLines.forEach(line => {
-                ctx.fillText(line, startX + padding, textY);
-                textY += lineHeight;
-            });
+            wrappedLines.forEach(line => { ctx.fillText(line, startX + padding, textY); textY += lineHeight; });
 
             const texture = new THREE.CanvasTexture(canvas);
             texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -516,40 +558,26 @@
             let lines = [];
             let currentLine = words[0];
             for (let i = 1; i < words.length; i++) {
-                const word = words[i];
-                const width = ctx.measureText(currentLine + " " + word).width;
-                if (width < maxWidth) currentLine += " " + word;
-                else { lines.push(currentLine); currentLine = word; }
+                const width = ctx.measureText(currentLine + " " + words[i]).width;
+                if (width < maxWidth) currentLine += " " + words[i];
+                else { lines.push(currentLine); currentLine = words[i]; }
             }
             lines.push(currentLine);
             return lines;
         }
 
-        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
-            ctx.beginPath();
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
-            ctx.closePath();
-            if (fill) ctx.fill();
-            if (stroke) ctx.stroke();
+        function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+            ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.closePath();
+            if (fill) ctx.fill(); if (stroke) ctx.stroke();
         }
 
+        // --- System & Physics ---
         function parseSettingsFromQuery() {
             const params = new URLSearchParams(window.location.search);
-            const moveSpeed = Number(params.get('moveSpeed'));
-            const invertLook = params.get('invertLook');
-            const showInstructions = params.get('showInstructions');
             applySettings({
-                movementSpeed: Number.isFinite(moveSpeed) ? moveSpeed : undefined,
-                invertLook: invertLook === null ? undefined : invertLook === 'true',
-                showInstructions: showInstructions === null ? undefined : showInstructions === 'true',
+                movementSpeed: Number(params.get('moveSpeed')) || 1.0,
+                invertLook: params.get('invertLook') === 'true',
+                showInstructions: params.get('showInstructions') === 'true',
             });
         }
 
@@ -561,31 +589,27 @@
         }
 
         function handleIncomingMessage(event) {
-            const { data } = event;
-            if (!data || data.source !== 'world-engine') return;
-            if (data.type === 'world-engine-settings') applySettings(data.payload || {});
-            if (data.type === 'world-engine-chat') {
-                if (Array.isArray(data.payload?.history)) replaceChatHistory(data.payload.history);
-                else if (data.payload?.direction !== 'outgoing') recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
+            if (event.data?.source !== 'world-engine') return;
+            if (event.data.type === 'world-engine-settings') applySettings(event.data.payload);
+            if (event.data.type === 'world-engine-chat') {
+                if (Array.isArray(event.data.payload?.history)) replaceChatHistory(event.data.payload.history);
+                else if (event.data.payload?.direction !== 'outgoing') recordChatMessage(event.data.payload?.role || 'assistant', event.data.payload?.text);
             }
         }
         
         function setupPointerLock(target) {
-            const instructions = document.getElementById('instructions');
             const requestLock = () => target.requestPointerLock?.();
-            instructions?.addEventListener('click', requestLock);
+            document.getElementById('instructions')?.addEventListener('click', requestLock);
             target.addEventListener('click', requestLock);
             document.addEventListener('pointerlockchange', () => {
                 state.isLocked = document.pointerLockElement === target;
                 updateInstructionsVisibility();
             });
-            document.addEventListener('mousemove', (event) => {
+            document.addEventListener('mousemove', (e) => {
                 if (!state.isLocked) return;
-                const lookSpeed = 0.0025;
-                state.yaw -= event.movementX * lookSpeed;
-                state.pitch -= event.movementY * lookSpeed * (runtimeSettings.invertLook ? -1 : 1);
-                const maxPitch = Math.PI / 2 - 0.01;
-                state.pitch = Math.max(-maxPitch, Math.min(maxPitch, state.pitch));
+                state.yaw -= e.movementX * 0.0025;
+                state.pitch -= e.movementY * 0.0025 * (runtimeSettings.invertLook ? -1 : 1);
+                state.pitch = Math.max(-1.5, Math.min(1.5, state.pitch));
                 camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
             });
         }
@@ -593,42 +617,33 @@
         function setupChatUi() {
             chatInput = document.getElementById('chat_input');
             chatForm = document.getElementById('chat_form');
-            chatForm?.addEventListener('submit', (event) => {
-                event.preventDefault();
-                const text = chatInput?.value?.trim() ?? '';
-                if (!text) return;
-                dispatchChatMessage(text);
-                if (chatInput) { chatInput.value = ''; chatInput.blur(); }
+            chatForm?.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const text = chatInput?.value?.trim();
+                if (text) { dispatchChatMessage(text); chatInput.value = ''; chatInput.blur(); }
             });
-            chatInput?.addEventListener('focus', () => {
-                state.isChatFocused = true;
-                resetMovementState();
-                if (document.pointerLockElement) document.exitPointerLock();
-            });
-            chatInput?.addEventListener('blur', () => { state.isChatFocused = false; });
+            chatInput?.addEventListener('focus', () => { state.isChatFocused = true; state.moveForward=state.moveBackward=state.moveLeft=state.moveRight=false; if(document.pointerLockElement) document.exitPointerLock(); });
+            chatInput?.addEventListener('blur', () => state.isChatFocused = false);
             renderChatBubble();
         }
 
         function setupEvents() {
-            document.addEventListener('keydown', (event) => { if(handleChatHotkeys(event)) return; handleKey(event, true); });
-            document.addEventListener('keyup', (event) => handleKey(event, false));
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
+            document.addEventListener('keydown', (e) => handleKey(e, true));
+            document.addEventListener('keyup', (e) => handleKey(e, false));
         }
         
-        function handleChatHotkeys(event) {
-            if (state.isChatFocused) { if(event.code === 'Escape') { chatInput?.blur(); return true; } return false; }
-            if (event.code === 'Enter' && (!event.target || event.target === document.body)) { event.preventDefault(); chatInput?.focus(); return true; }
-            return false;
-        }
-
-        function handleKey(event, pressed) {
-            if (state.isChatFocused) return;
-            if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
-            switch (event.code) {
+        function handleKey(e, pressed) {
+            if (state.isChatFocused) {
+                if(e.code === 'Enter' && pressed) chatInput.focus();
+                if(e.code === 'Escape' && pressed) chatInput.blur();
+                return;
+            }
+            switch(e.code) {
                 case 'ArrowUp': case 'KeyW': state.moveForward = pressed; break;
                 case 'ArrowLeft': case 'KeyA': state.moveLeft = pressed; break;
                 case 'ArrowDown': case 'KeyS': state.moveBackward = pressed; break;
@@ -637,17 +652,9 @@
             }
         }
 
-        function resetMovementState() {
-            state.moveForward = false; state.moveBackward = false;
-            state.moveLeft = false; state.moveRight = false;
-            state.jump = false; state.velocity.set?.(0, 0, 0);
-        }
-
         function dispatchChatMessage(text) {
             recordChatMessage('user', text);
-            const payload = { text, role: 'user', direction: 'outgoing' };
-            try { window.parent?.postMessage({ source: 'world-engine', type: 'world-engine-chat', payload }, '*'); } 
-            catch (error) { console.warn('Msg failed', error); }
+            window.parent?.postMessage({ source: 'world-engine', type: 'world-engine-chat', payload: { text, role: 'user', direction: 'outgoing' } }, '*');
         }
 
         function replaceChatHistory(entries = []) {
@@ -660,34 +667,41 @@
         }
         
         function updateInstructionsVisibility() {
-            const instructions = document.getElementById('instructions');
-            if (instructions) instructions.style.display = (runtimeSettings.showInstructions && !state.isLocked) ? 'block' : 'none';
+            const el = document.getElementById('instructions');
+            if(el) el.style.display = (runtimeSettings.showInstructions && !state.isLocked) ? 'block' : 'none';
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            state.time += 0.01;
             const time = performance.now();
-            const delta = (time - state.lastTime) / 1000;
+            const delta = Math.min((time - state.lastTime) / 1000, 0.1); // Cap delta
             state.lastTime = time;
+            state.globalTime += delta;
 
+            // Update Wind Uniforms
+            globalUniforms.time.value = state.globalTime;
+
+            // Firefly Motion
             if(fireflies) {
-                const positions = fireflies.geometry.attributes.position.array;
-                const phases = fireflies.geometry.attributes.phase.array;
-                for(let i=0; i<150; i++) {
-                    // Gentle floating
-                    positions[i*3 + 1] += Math.sin(state.time + phases[i]) * 0.01;
-                    positions[i*3] += Math.cos(state.time * 0.5 + phases[i]) * 0.005;
+                const pos = fireflies.geometry.attributes.position.array;
+                const ph = fireflies.geometry.attributes.phase.array;
+                for(let i=0; i<pos.length/3; i++) {
+                    pos[i*3+1] += Math.sin(state.globalTime * 1.0 + ph[i]) * 0.02; // Vertical bob
+                    pos[i*3] += Math.cos(state.globalTime * 0.5 + ph[i]) * 0.01; // Horizontal drift
                 }
                 fireflies.geometry.attributes.position.needsUpdate = true;
             }
 
+            // Physics
             if (state.isLocked) updateMovement(delta);
 
+            // Chat Bubble Tracking
             if (chatSprite && chatSprite.visible) {
-                const bobOffset = Math.sin(time * 0.002) * 0.05;
-                if (chatSprite.userData.baseY === undefined) chatSprite.userData.baseY = chatSprite.position.y;
-                chatSprite.position.y = chatSprite.userData.baseY + bobOffset;
+                const bob = Math.sin(state.globalTime * 2.0) * 0.05;
+                const h = chatSprite.userData.height || 3.5;
+                // Match avatar position + offset
+                chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
+                chatSprite.position.y += (h * 0.4) + bob; 
                 chatSprite.lookAt(camera.position);
             }
 
@@ -696,7 +710,7 @@
 
         function updateMovement(delta) {
             const damping = 8.0; 
-            const acceleration = 80.0 * runtimeSettings.movementSpeed;
+            const accel = 60.0 * runtimeSettings.movementSpeed;
 
             state.velocity.x -= state.velocity.x * damping * delta;
             state.velocity.z -= state.velocity.z * damping * delta;
@@ -707,9 +721,9 @@
             if (inputX !== 0 || inputZ !== 0) {
                 const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
                 const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
-                const moveDir = new THREE.Vector3().addScaledVector(right, inputX).addScaledVector(forward, -inputZ).normalize();
-                state.velocity.x += moveDir.x * acceleration * delta;
-                state.velocity.z += moveDir.z * acceleration * delta;
+                const move = new THREE.Vector3().addScaledVector(right, inputX).addScaledVector(forward, -inputZ).normalize();
+                state.velocity.x += move.x * accel * delta;
+                state.velocity.z += move.z * accel * delta;
             }
             
             state.velocity.y -= GRAVITY * delta;
@@ -722,9 +736,9 @@
             camera.position.z += state.velocity.z * delta;
             camera.position.y += state.velocity.y * delta;
 
-            const terrainH = getTerrainHeight(camera.position.x, camera.position.z);
-            if (camera.position.y < terrainH + PLAYER_EYE_HEIGHT) {
-                camera.position.y = terrainH + PLAYER_EYE_HEIGHT;
+            const groundH = getTerrainHeight(camera.position.x, camera.position.z);
+            if (camera.position.y < groundH + PLAYER_EYE_HEIGHT) {
+                camera.position.y = groundH + PLAYER_EYE_HEIGHT;
                 state.velocity.y = Math.max(0, state.velocity.y);
                 state.isGrounded = true;
             } else {
