@@ -9,7 +9,7 @@ const SETTINGS_HTML_URL = new URL('./settings.html', EXTENSION_BASE_URL).toStrin
 const SETTINGS_ROOT_ID = 'world-engine-settings';
 const CHAT_ROLE_USER = 'user';
 const CHAT_ROLE_ASSISTANT = 'assistant';
-const CHAT_SYNC_POLL_INTERVAL = 10000;
+const CHAT_SYNC_POLL_INTERVAL = 5000;
 const CHAT_SYNC_HISTORY_LIMIT = 24;
 
 let chatIntegrationHandle = null;
@@ -69,7 +69,10 @@ function normalizeChatMessage(message) {
 function syncChatHistory(targetFrame = null) {
     const ctx = getWorldEngineContext();
     const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
-    const normalized = chat
+
+    const recentRaw = chat.slice(-CHAT_SYNC_HISTORY_LIMIT * 2);
+    
+    const normalized = recentRaw
         .map((entry) => normalizeChatMessage(entry))
         .filter(Boolean);
 
@@ -77,8 +80,16 @@ function syncChatHistory(targetFrame = null) {
     const lastEntry = recent[recent.length - 1] || null;
     chatSyncState.lastSignature = lastEntry?.signature ?? null;
 
+    let displayHistory = [];
+    for (let i = recent.length - 1; i >= 0; i--) {
+        if (recent[i].role === CHAT_ROLE_ASSISTANT) {
+            displayHistory = [recent[i]];
+            break;
+        }
+    }
+
     broadcastChatPayload({
-        history: recent.map(({ text, role }) => ({ text, role })),
+        history: displayHistory.map(({ text, role }) => ({ text, role })),
         direction: 'incoming',
     }, targetFrame);
 }
