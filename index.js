@@ -338,6 +338,7 @@ function setupSettingsPanel(root) {
     const maximizeButton = root.querySelector('#world_engine_maximize');
     const maximizeIcon = maximizeButton?.querySelector('.fa-solid');
     const maximizeLabel = maximizeButton?.querySelector('.world-engine-maximize-label');
+    const minimizeButton = root.querySelector('#world_engine_minimize');
     const iframeWrapperParent = iframeWrapper?.parentElement;
     const iframeWrapperPlaceholder = document.createComment('world-engine-iframe-placeholder');
     const iframeWrapperNextSibling = iframeWrapper?.nextSibling || null;
@@ -387,7 +388,9 @@ function setupSettingsPanel(root) {
 
         if (isMaximized) {
             moveWrapperToBody();
+            iframeWrapper?.classList.remove('is-hidden');
         } else {
+            iframeWrapper?.classList.add('is-hidden');
             restoreWrapperToPanel();
         }
         iframeWrapper?.classList.toggle('is-maximized', isMaximized);
@@ -403,7 +406,7 @@ function setupSettingsPanel(root) {
         }
 
         if (maximizeLabel) {
-            maximizeLabel.textContent = isMaximized ? 'Exit maximize' : 'Maximize view';
+            maximizeLabel.textContent = isMaximized ? 'Minimize view' : 'Start world';
         }
     };
 
@@ -425,6 +428,7 @@ function setupSettingsPanel(root) {
     });
 
     maximizeButton?.addEventListener('click', () => setMaximized(!isMaximized));
+    minimizeButton?.addEventListener('click', () => setMaximized(false));
 
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && isMaximized) {
