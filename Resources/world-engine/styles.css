@@ -1,19 +1,20 @@
-/* REWORKED: "Aero Glass" Theme for World Engine */
+/* REWORKED: Native SillyTavern Theme Integration */
 
 :root {
-    --smart-theme-color: #3b82f6; /* Modern Blue */
-    --glass-bg: rgba(15, 23, 42, 0.75);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
+    /* SillyTavern Variable Mapping (with fallbacks) */
+    --st-block-bg: var(--block-body, rgba(30, 33, 36, 0.95));
+    --st-text-color: var(--text-body, #e0e0e0);
+    --st-accent-color: var(--smart-theme-color, #0078d7);
+    --st-border-color: var(--border_color, rgba(255, 255, 255, 0.15));
+    --st-font-family: var(--mainFontFamily, "Segoe UI", Roboto, Helvetica, sans-serif);
 }
 
 body {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--st-font-family);
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background-color: #000;
+    background-color: #000; /* Canvas background */
     width: 100vw;
     height: 100vh;
     user-select: none;
@@ -29,42 +30,42 @@ canvas {
     outline: none;
 }
 
-/* --- Input Bar (Floating Capsule) --- */
+/* --- UI Container --- */
 #chat_overlay {
     position: absolute;
-    bottom: 36px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     width: 90%;
-    max-width: 640px;
+    max-width: 800px;
     z-index: 100;
     pointer-events: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
+/* --- Native Input Bar --- */
 #chat_form {
     pointer-events: auto;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--glass-border);
-    border-radius: 999px;
-    padding: 6px 8px 6px 24px;
-    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Match ST Input Box style */
+    background: var(--st-block-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--st-border-color);
+    border-radius: 12px; /* Slightly rounded, not pill */
+    padding: 8px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #chat_form:focus-within {
-    background: rgba(30, 41, 59, 0.85);
-    border-color: rgba(59, 130, 246, 0.5);
-    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7), 0 0 0 2px rgba(59, 130, 246, 0.2);
-    transform: translateY(-2px);
+    border-color: var(--st-accent-color);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
 /* Input Field */
@@ -72,109 +73,99 @@ canvas {
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
-    padding: 12px 0;
-    font-size: 1.05rem;
-    font-weight: 400;
+    color: var(--st-text-color);
+    padding: 10px 4px;
+    font-size: 1rem;
     font-family: inherit;
     outline: none;
-    letter-spacing: 0.01em;
+    line-height: 1.4;
 }
 
 #chat_input::placeholder {
-    color: var(--text-secondary);
-    font-weight: 400;
+    color: var(--st-text-color);
+    opacity: 0.5;
 }
 
 /* Send Button */
 #chat_form button {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--smart-theme-color);
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-    border: none;
-    color: transparent;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--st-text-color);
     cursor: pointer;
     position: relative;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-    flex-shrink: 0;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    opacity: 0.8;
 }
 
-/* Arrow Icon */
+/* Paper Plane Icon */
 #chat_form button::after {
     content: '➤';
-    position: absolute;
-    color: #fff;
-    font-size: 16px;
-    font-weight: bold;
-    transform: translateX(-1px); /* Visual centering */
+    font-size: 1.1rem;
+    transform: translateX(-1px) rotate(-45deg); /* Tweak icon angle */
+    display: block;
 }
 
 #chat_form button:hover {
-    transform: scale(1.08);
-    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
-    filter: brightness(1.1);
+    background: var(--st-accent-color);
+    color: #fff;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 #chat_form button:active {
-    transform: scale(0.95);
-    filter: brightness(0.9);
+    transform: translateY(0);
 }
 
-/* --- Chat Log (Hidden) --- */
+/* --- Hidden Log --- */
 #chat_log { display: none; }
 
-/* --- Instructions Overlay --- */
+/* --- Instructions Panel --- */
 #instructions {
     position: absolute;
-    top: 28px;
-    left: 28px;
+    top: 20px;
+    left: 20px;
     z-index: 50;
     
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 20px 24px;
+    background: var(--st-block-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--st-border-color);
+    border-radius: 8px;
+    padding: 16px;
     
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    width: 200px;
+    color: var(--st-text-color);
+    font-size: 0.85rem;
+    min-width: 180px;
     pointer-events: none;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-    opacity: 0.9;
-    transition: opacity 0.3s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
 
 #instructions h1 {
-    margin: 0 0 16px 0;
-    color: var(--text-primary);
-    font-size: 0.85rem;
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 700;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    padding-bottom: 10px;
+    letter-spacing: 0.05em;
+    color: var(--st-accent-color);
+    border-bottom: 1px solid var(--st-border-color);
+    padding-bottom: 8px;
 }
 
 #instructions p {
-    margin: 8px 0;
+    margin: 6px 0;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    opacity: 0.9;
 }
 
 #instructions strong {
-    color: #fff;
     background: rgba(255,255,255,0.1);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: monospace;
-    font-size: 0.85em;
 }
