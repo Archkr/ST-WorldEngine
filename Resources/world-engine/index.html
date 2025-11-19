@@ -7,15 +7,15 @@
 </head>
 <body>
     <div id="instructions">
-        <h1>Click to Enter Park</h1>
-        <p>Move: W, A, S, D</p>
-        <p>Look: Mouse</p>
+        <h1>Controls</h1>
+        <p>Move: <strong>W A S D</strong></p>
+        <p>Look: <strong>Mouse</strong></p>
     </div>
 
     <div id="chat_overlay" aria-label="World Engine chat">
         <div id="chat_log" aria-live="polite"></div>
         <form id="chat_form" autocomplete="off">
-            <input id="chat_input" name="chat_input" type="text" placeholder="Send a message" inputmode="text" maxlength="500">
+            <input id="chat_input" name="chat_input" type="text" placeholder="Say something..." inputmode="text" maxlength="500">
             <button type="submit">Send</button>
         </form>
     </div>
@@ -23,8 +23,8 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
             }
         }
     </script>
@@ -35,9 +35,9 @@
 
         const DEFAULT_CHAT_MESSAGE = 'Welcome to the Park!';
         const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
-        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.0, 0);
+        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.2, 0); // Raised slightly
         const CHAT_HISTORY_LIMIT = 12;
-        const CHAT_BUBBLE_HISTORY = 3;
+        const CHAT_BUBBLE_HISTORY = 1; // Only show the very last message for a clean RPG look
 
         const runtimeSettings = {
             movementSpeed: 1.0,
@@ -60,16 +60,10 @@
             chatHistory: [],
         };
 
-        let camera;
-        let scene;
-        let renderer;
-        let chatMaterial;
-        let chatSprite;
-        let avatarSprite;
+        let camera, scene, renderer;
+        let chatMaterial, chatSprite, avatarSprite;
         let expressionClient;
-        let chatLogElement;
-        let chatInput;
-        let chatForm;
+        let chatInput, chatForm;
 
         window.WorldEngine = window.WorldEngine || {};
         window.WorldEngine.updateChatMessage = updateChatMessage;
@@ -106,7 +100,7 @@
             buildPark();
             buildAvatar();
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -150,11 +144,7 @@
                     replaceChatHistory(data.payload.history);
                     return;
                 }
-
-                if (data.payload?.direction === 'outgoing') {
-                    return;
-                }
-
+                if (data.payload?.direction === 'outgoing') return;
                 recordChatMessage(data.payload?.role || 'assistant', data.payload?.text);
             }
         }
@@ -183,7 +173,6 @@
         }
 
         function setupChatUi() {
-            chatLogElement = document.getElementById('chat_log');
             chatInput = document.getElementById('chat_input');
             chatForm = document.getElementById('chat_form');
 
@@ -194,20 +183,20 @@
                 dispatchChatMessage(text);
                 if (chatInput) {
                     chatInput.value = '';
+                    chatInput.blur(); // Optional: blur to let user move immediately
                 }
             });
 
             chatInput?.addEventListener('focus', () => {
                 state.isChatFocused = true;
                 resetMovementState();
-                exitPointerLock();
+                if (document.pointerLockElement) document.exitPointerLock();
             });
 
             chatInput?.addEventListener('blur', () => {
                 state.isChatFocused = false;
             });
 
-            renderChatLog();
             renderChatBubble();
         }
 
@@ -233,12 +222,11 @@
                 }
                 return false;
             }
-
             if (event.code === 'Enter' && (!event.target || event.target === document.body)) {
+                event.preventDefault();
                 chatInput?.focus();
                 return true;
             }
-
             return false;
         }
 
@@ -246,30 +234,10 @@
             if (state.isChatFocused) return;
             if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
             switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    state.moveForward = pressed;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    state.moveLeft = pressed;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    state.moveBackward = pressed;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    state.moveRight = pressed;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        function exitPointerLock() {
-            if (document.pointerLockElement === renderer?.domElement) {
-                document.exitPointerLock?.();
+                case 'ArrowUp': case 'KeyW': state.moveForward = pressed; break;
+                case 'ArrowLeft': case 'KeyA': state.moveLeft = pressed; break;
+                case 'ArrowDown': case 'KeyS': state.moveBackward = pressed; break;
+                case 'ArrowRight': case 'KeyD': state.moveRight = pressed; break;
             }
         }
 
@@ -283,9 +251,7 @@
 
         function dispatchChatMessage(text) {
             recordChatMessage('user', text);
-
             const payload = { text, role: 'user', direction: 'outgoing' };
-
             try {
                 window.parent?.postMessage({
                     source: 'world-engine',
@@ -299,18 +265,13 @@
 
         function replaceChatHistory(entries = []) {
             const normalized = Array.isArray(entries)
-                ? entries
-                    .map((entry) => ({
+                ? entries.map(entry => ({
                         role: entry?.role === 'user' ? 'user' : 'assistant',
                         text: String(entry?.text ?? '').trim(),
-                    }))
-                    .filter((entry) => entry.text)
+                    })).filter(entry => entry.text)
                 : [];
 
             state.chatHistory = normalized.slice(-CHAT_HISTORY_LIMIT);
-            state.chatText = state.chatHistory[state.chatHistory.length - 1]?.text || DEFAULT_CHAT_MESSAGE;
-
-            renderChatLog();
             renderChatBubble();
         }
 
@@ -332,19 +293,16 @@
                 foliage.position.y = 5;
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
                 trunk.position.y = 1;
-
                 treeGroup.add(trunk);
                 treeGroup.add(foliage);
-
                 const x = Math.random() * 100 - 50;
                 const z = Math.random() * 100 - 50;
-
                 if (Math.abs(x) > 5 || Math.abs(z) > 5) {
                     treeGroup.position.set(x, 0, z);
                     scene.add(treeGroup);
                 }
             }
-
+            // Podium
             const podiumGeo = new THREE.CylinderGeometry(2, 2.5, 1, 32);
             const podiumMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
             const podium = new THREE.Mesh(podiumGeo, podiumMat);
@@ -355,29 +313,19 @@
         function buildAvatar() {
             const textureLoader = new THREE.TextureLoader();
             const material = new THREE.SpriteMaterial();
-
             avatarSprite = new THREE.Sprite(material);
             avatarSprite.position.set(0, 2.5, 0);
             avatarSprite.scale.set(3, 3, 1);
             scene.add(avatarSprite);
 
             expressionClient = new ExpressionTextureClient({ sprite: avatarSprite, textureLoader });
+            if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
 
-            if (expressionClient?.fallbackUrl) {
-                expressionClient.swapTexture(expressionClient.fallbackUrl);
-            }
-
-            chatMaterial = new THREE.SpriteMaterial({
-                transparent: true,
-                depthTest: false,
-                depthWrite: false,
-            });
+            chatMaterial = new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false });
             chatSprite = new THREE.Sprite(chatMaterial);
             chatSprite.renderOrder = 10;
-            chatSprite.frustumCulled = false;
             chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
             chatSprite.scale.set(6, 3.5, 1);
-            chatSprite.visible = true;
             scene.add(chatSprite);
         }
 
@@ -389,160 +337,137 @@
             const normalizedRole = role === 'user' ? 'user' : 'assistant';
             const text = String(message ?? '').trim() || DEFAULT_CHAT_MESSAGE;
             const history = state.chatHistory;
-            const lastEntry = history[history.length - 1];
-            const shouldMergeWithLast = lastEntry
-                && lastEntry.role === normalizedRole
-                && (text.startsWith(lastEntry.text) || lastEntry.text.startsWith(text));
-
-            if (shouldMergeWithLast) {
-                lastEntry.text = text;
-            } else {
-                history.push({ role: normalizedRole, text });
-            }
-
-            if (history.length > CHAT_HISTORY_LIMIT) {
-                history.splice(0, history.length - CHAT_HISTORY_LIMIT);
-            }
-
-            state.chatText = text;
-            renderChatLog();
+            
+            // Simple push, only keeping latest context
+            history.push({ role: normalizedRole, text });
+            if (history.length > CHAT_HISTORY_LIMIT) history.shift();
+            
             renderChatBubble();
-        }
-
-        function renderChatLog() {
-            if (!chatLogElement) return;
-            const fragment = document.createDocumentFragment();
-            state.chatHistory.forEach((entry) => {
-                const row = document.createElement('div');
-                row.className = `chat-log-entry chat-log-${entry.role}`;
-
-                const label = document.createElement('span');
-                label.className = 'chat-log-label';
-                label.textContent = entry.role === 'assistant' ? 'Assistant' : 'You';
-
-                const text = document.createElement('span');
-                text.className = 'chat-log-text';
-                text.textContent = entry.text;
-
-                row.appendChild(label);
-                row.appendChild(text);
-                fragment.appendChild(row);
-            });
-
-            chatLogElement.innerHTML = '';
-            chatLogElement.appendChild(fragment);
-            chatLogElement.scrollTop = chatLogElement.scrollHeight;
         }
 
         function renderChatBubble() {
             if (!chatMaterial) return;
+            if (chatMaterial.map) chatMaterial.map.dispose();
 
-            if (chatMaterial.map) {
-                chatMaterial.map.dispose();
+            // Filter history to only show the last Assistant message for a cleaner RPG look
+            const assistantMsgs = state.chatHistory.filter(m => m.role === 'assistant');
+            const displayEntry = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
+            
+            // If no assistant message, or history is empty, hide bubble or show default
+            const entries = displayEntry ? [displayEntry] : (state.chatHistory.length === 0 ? [{role:'assistant', text:DEFAULT_CHAT_MESSAGE}] : []);
+            
+            if (entries.length === 0) {
+                chatSprite.visible = false;
+                return;
             }
-
-            const recentHistory = state.chatHistory.length
-                ? state.chatHistory.slice(-CHAT_BUBBLE_HISTORY)
-                : [{ role: 'assistant', text: DEFAULT_CHAT_MESSAGE }];
-
-            chatMaterial.map = createChatTexture(recentHistory);
+            
+            chatSprite.visible = true;
+            chatMaterial.map = createChatTexture(entries);
             chatMaterial.needsUpdate = true;
+            
+            // Animate a tiny bit of float (visual only, handled in animate loop mostly)
         }
 
         function createChatTexture(historyEntries) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 768;
-            canvas.height = 384;
+            canvas.width = 1024; // High res for sharpness
+            canvas.height = 512;
 
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-            roundRect(ctx, 16, 48, canvas.width - 32, canvas.height - 80, 28, true);
+            // Clear
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const maxWidth = canvas.width - 140;
-            const lineHeight = 34;
-            const labelOffset = 60;
-            const messageSpacing = 96;
+            const entry = historyEntries[0]; // We are only showing one message
+            const padding = 40;
+            const maxWidth = canvas.width - (padding * 2);
+            
+            // 1. Measure Text to Size the Bubble Dynamically
+            ctx.font = '600 32px "Inter", "Segoe UI", system-ui, sans-serif';
+            const wrappedLines = wrapAndClampText(ctx, entry.text, maxWidth, 6);
+            
+            const lineHeight = 48;
+            const headerHeight = 50;
+            const textHeight = wrappedLines.length * lineHeight;
+            const bubbleHeight = textHeight + headerHeight + (padding * 2);
+            const bubbleWidth = Math.max(400, canvas.width); // Use full width for sprite consistency
 
-            historyEntries.forEach((entry, index) => {
-                const baseY = 80 + index * messageSpacing;
-                const label = entry.role === 'assistant' ? 'Assistant' : 'You';
-                const labelColor = entry.role === 'assistant' ? '#93c5fd' : '#34d399';
+            // Centering vars
+            const startX = 10;
+            const startY = canvas.height - bubbleHeight - 20; // Align to bottom of texture so tail connects
+            
+            // 2. Draw Glass Bubble Background
+            const gradient = ctx.createLinearGradient(0, startY, 0, startY + bubbleHeight);
+            gradient.addColorStop(0, 'rgba(30, 30, 40, 0.85)');
+            gradient.addColorStop(1, 'rgba(15, 15, 20, 0.95)');
+            
+            ctx.fillStyle = gradient;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 3;
+            
+            // Shadow for depth
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetY = 10;
 
-                ctx.font = '700 18px "Inter", Arial, sans-serif';
-                ctx.fillStyle = labelColor;
-                ctx.textAlign = 'left';
-                ctx.fillText(label, 36, baseY + 6);
+            roundRect(ctx, startX, startY, canvas.width - 20, bubbleHeight, 30, true, true);
+            
+            // Reset shadow for text
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
 
-                ctx.font = '600 24px "Inter", Arial, sans-serif';
-                ctx.fillStyle = '#e2e8f0';
-                const wrapped = wrapAndClampText(ctx, entry.text || DEFAULT_CHAT_MESSAGE, maxWidth, 3);
-                const totalHeight = wrapped.length * lineHeight;
-                const startY = baseY + 12 + (60 - totalHeight) / 2;
+            // 3. Draw "Tail" (Triangle at bottom center)
+            ctx.beginPath();
+            const tailX = canvas.width / 2;
+            const tailY = startY + bubbleHeight;
+            ctx.moveTo(tailX - 20, tailY);
+            ctx.lineTo(tailX, tailY + 25);
+            ctx.lineTo(tailX + 20, tailY);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(15, 15, 20, 0.95)';
+            ctx.fill();
 
-                wrapped.forEach((line, lineIndex) => {
-                    ctx.fillText(line, labelOffset, startY + lineIndex * lineHeight);
-                });
+            // 4. Draw Name Header
+            ctx.font = 'bold 28px "Inter", sans-serif';
+            ctx.fillStyle = '#60a5fa'; // Blue-ish
+            ctx.textBaseline = 'top';
+            ctx.fillText("ASSISTANT", startX + padding, startY + padding);
+
+            // 5. Draw Message Body
+            ctx.font = '500 32px "Inter", sans-serif';
+            ctx.fillStyle = '#f1f5f9'; // White-ish
+            
+            let textY = startY + padding + headerHeight;
+            wrappedLines.forEach(line => {
+                ctx.fillText(line, startX + padding, textY);
+                textY += lineHeight;
             });
 
             const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
             texture.needsUpdate = true;
             return texture;
         }
 
         function wrapAndClampText(ctx, message, maxWidth, maxLines) {
-            const words = message.split(/\s+/).filter(Boolean);
-            if (!words.length) return [''];
+            const words = message.split(/\s+/);
+            let lines = [];
+            let currentLine = words[0];
 
-            const lines = [];
-            let currentLine = '';
-
-            for (let i = 0; i < words.length; i++) {
+            for (let i = 1; i < words.length; i++) {
                 const word = words[i];
-                const nextLine = currentLine ? `${currentLine} ${word}` : word;
-
-                if (ctx.measureText(nextLine).width <= maxWidth) {
-                    currentLine = nextLine;
-                    continue;
-                }
-
-                if (lines.length === maxLines - 1) {
-                    const remaining = [currentLine, ...words.slice(i)].filter(Boolean).join(' ');
-                    lines.push(clampLine(ctx, remaining, maxWidth));
-                    return lines;
-                }
-
-                if (currentLine) {
-                    lines.push(currentLine);
+                const width = ctx.measureText(currentLine + " " + word).width;
+                if (width < maxWidth) {
+                    currentLine += " " + word;
                 } else {
-                    lines.push(clampLine(ctx, word, maxWidth));
+                    lines.push(currentLine);
+                    currentLine = word;
                 }
-
-                currentLine = '';
             }
-
-            if (lines.length === maxLines) {
-                return lines;
-            }
-
-            if (currentLine) {
-                lines.push(currentLine);
-            }
-
+            lines.push(currentLine);
             return lines.slice(0, maxLines);
         }
 
-        function clampLine(ctx, text, maxWidth) {
-            let clamped = text;
-            const ellipsis = '…';
-
-            while (ctx.measureText(clamped + ellipsis).width > maxWidth && clamped.length > 0) {
-                clamped = clamped.slice(0, -1);
-            }
-
-            return clamped.length < text.length ? clamped + ellipsis : clamped;
-        }
-
-        function roundRect(ctx, x, y, width, height, radius, fill) {
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
             ctx.beginPath();
             ctx.moveTo(x + radius, y);
             ctx.lineTo(x + width - radius, y);
@@ -555,18 +480,14 @@
             ctx.quadraticCurveTo(x, y, x + radius, y);
             ctx.closePath();
             if (fill) ctx.fill();
+            if (stroke) ctx.stroke();
         }
 
         function updateInstructionsVisibility() {
             const instructions = document.getElementById('instructions');
-            if (!instructions) return;
-
-            if (!runtimeSettings.showInstructions) {
-                instructions.style.display = 'none';
-                return;
+            if (instructions) {
+                instructions.style.display = (runtimeSettings.showInstructions && !state.isLocked) ? 'block' : 'none';
             }
-
-            instructions.style.display = state.isLocked ? 'none' : 'block';
         }
 
         function animate() {
@@ -579,8 +500,12 @@
                 updateMovement(delta);
             }
 
-            if (chatSprite && avatarSprite) {
+            // Bobbing effect for the chat bubble
+            if (chatSprite && chatSprite.visible) {
+                const bobOffset = Math.sin(time * 0.002) * 0.1;
                 chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
+                chatSprite.position.y += bobOffset;
+                // Always face camera
                 chatSprite.lookAt(camera.position);
             }
 
