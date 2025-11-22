@@ -154,7 +154,7 @@
             firefly: 0x88ffff
         };
 
-        const TIME_KEYFRAMES = [
+        const BASE_TIME_KEYFRAMES = [
             { hour: 0, skyColor: 0x04060b, fogColor: 0x0b0d14, fogDensity: 0.02, ambientSky: 0x141f2f, ambientGround: 0x050607, ambientIntensity: 0.25, sunColor: 0x223349, sunIntensity: 0.25, exposure: 0.85 },
             { hour: 6, skyColor: 0xffb17a, fogColor: 0xf6d8bf, fogDensity: 0.018, ambientSky: 0xffe6c7, ambientGround: 0x43311f, ambientIntensity: 0.55, sunColor: 0xffe5b5, sunIntensity: 1.2, exposure: 1.1 },
             { hour: 12, skyColor: COLORS.sky, fogColor: COLORS.fog, fogDensity: 0.012, ambientSky: 0xddeeff, ambientGround: 0x335533, ambientIntensity: 0.8, sunColor: 0xffffff, sunIntensity: 1.8, exposure: 1.3 },
@@ -162,6 +162,47 @@
             { hour: 20, skyColor: 0x1b2431, fogColor: 0x111724, fogDensity: 0.0185, ambientSky: 0x1f2f44, ambientGround: 0x0c0f17, ambientIntensity: 0.4, sunColor: 0x62758a, sunIntensity: 0.55, exposure: 0.92 },
             { hour: 24, skyColor: 0x04060b, fogColor: 0x0b0d14, fogDensity: 0.02, ambientSky: 0x141f2f, ambientGround: 0x050607, ambientIntensity: 0.25, sunColor: 0x223349, sunIntensity: 0.25, exposure: 0.85 },
         ];
+
+        const TIME_KEYFRAMES = buildHourlyTimeKeyframes(BASE_TIME_KEYFRAMES);
+
+        function buildHourlyTimeKeyframes(baseKeyframes) {
+            const hourlyKeyframes = [];
+            for (let hour = 0; hour <= 24; hour++) {
+                const profile = interpolateTimeKeyframes(baseKeyframes, hour);
+                hourlyKeyframes.push({ hour, ...profile });
+            }
+            return hourlyKeyframes;
+        }
+
+        function interpolateTimeKeyframes(keyframes, hours) {
+            const wrapped = ((Number(hours) % 24) + 24) % 24;
+            let start = keyframes[0];
+            let end = keyframes[keyframes.length - 1];
+            for (let i = 0; i < keyframes.length - 1; i++) {
+                const current = keyframes[i];
+                const next = keyframes[i + 1];
+                if (wrapped >= current.hour && wrapped <= next.hour) {
+                    start = current;
+                    end = next;
+                    break;
+                }
+            }
+            const span = Math.max(0.0001, end.hour - start.hour);
+            const t = (wrapped - start.hour) / span;
+            const lerpColor = (a, b) => new THREE.Color(a).lerp(new THREE.Color(b), t).getHex();
+            const lerp = (a, b) => THREE.MathUtils.lerp(a, b, t);
+            return {
+                skyColor: lerpColor(start.skyColor, end.skyColor),
+                fogColor: lerpColor(start.fogColor, end.fogColor),
+                fogDensity: lerp(start.fogDensity, end.fogDensity),
+                ambientSky: lerpColor(start.ambientSky, end.ambientSky),
+                ambientGround: lerpColor(start.ambientGround, end.ambientGround),
+                ambientIntensity: lerp(start.ambientIntensity, end.ambientIntensity),
+                sunColor: lerpColor(start.sunColor, end.sunColor),
+                sunIntensity: lerp(start.sunIntensity, end.sunIntensity),
+                exposure: lerp(start.exposure, end.exposure),
+            };
+        }
 
         const WEATHER_PRESETS = ['clear', 'foggy', 'rainy'];
         const CAMERA_FOV_RANGE = [40, 100];
