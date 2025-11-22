@@ -1,0 +1,190 @@
+<div id="world-engine-settings" class="extension_settings extension_container world-engine-container">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <div class="inline-drawer-title">
+                <div class="fa-solid fa-mountain-sun"></div>
+                <b>World Engine</b>
+            </div>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+        </div>
+        <div class="inline-drawer-content world-engine-settings-panel">
+            
+            <!-- Header Toolbar -->
+            <div class="world-engine-toolbar">
+                <div>
+                    <h3 data-i18n="World Engine">World Engine</h3>
+                    <p class="world-engine-description" data-i18n="Open an interactive 3D view inside SillyTavern.">Open an interactive 3D view inside SillyTavern.</p>
+                </div>
+                <button class="world-engine-action-button menu_button" id="world_engine_maximize" type="button">
+                    <span class="fa-solid fa-maximize"></span>
+                    <span class="world-engine-maximize-label" data-i18n="Start world">Start world</span>
+                </button>
+                <button class="world-engine-action-button menu_button" id="world_engine_refresh_state" type="button">
+                    <span class="fa-solid fa-rotate"></span>
+                    <span data-i18n="Refresh state">Refresh state</span>
+                </button>
+            </div>
+
+            <!-- Iframe View -->
+            <div class="world-engine-iframe-wrapper is-hidden">
+                <iframe id="world_engine_iframe" class="world-engine-iframe" title="World Engine" allowfullscreen></iframe>
+                <div class="world-engine-iframe-error is-hidden" role="alert">
+                    <p class="world-engine-error-text" data-i18n="We couldn't load the World Engine.">We couldn't load the World Engine.</p>
+                    <button type="button" class="world-engine-retry-button menu_button" data-i18n="Retry">Retry</button>
+                </div>
+                <button class="world-engine-overlay-button" id="world_engine_minimize" type="button">
+                    <span class="fa-solid fa-minimize"></span>
+                    <span class="world-engine-overlay-label" data-i18n="Minimize view">Minimize view</span>
+                </button>
+            </div>
+
+            <!-- Settings Grid -->
+            <div class="world-engine-settings" id="world_engine_settings">
+                
+                <!-- Speed Slider Card -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Movement speed">Movement Speed</div>
+                        <div class="world-engine-setting-value world-engine-speed-value" id="world_engine_speed_value">1.0x</div>
+                    </div>
+                    <input type="range" id="world_engine_speed" class="world-engine-slider" min="0.5" max="3" step="0.1">
+                </div>
+
+                <!-- Time of Day Slider -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Time of day">Time of day</div>
+                        <div class="world-engine-setting-value" id="world_engine_time_value">12:00</div>
+                    </div>
+                    <input type="range" id="world_engine_time_of_day" class="world-engine-slider" min="0" max="24" step="0.5">
+                </div>
+
+                <!-- Weather Preset -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-setting-label" for="world_engine_weather" data-i18n="Weather preset">Weather preset</label>
+                    <select id="world_engine_weather" class="world-engine-select">
+                        <option value="clear" data-i18n="Clear">Clear</option>
+                        <option value="foggy" data-i18n="Foggy">Foggy</option>
+                        <option value="rainy" data-i18n="Rainy">Rainy</option>
+                    </select>
+                </div>
+
+                <!-- Camera FOV Slider -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Camera FOV">Camera FOV</div>
+                        <div class="world-engine-setting-value" id="world_engine_fov_value">60°</div>
+                    </div>
+                    <input type="range" id="world_engine_fov" class="world-engine-slider" min="40" max="100" step="1">
+                </div>
+
+                <!-- Mouse Sensitivity Slider -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Mouse sensitivity">Mouse sensitivity</div>
+                        <div class="world-engine-setting-value" id="world_engine_sensitivity_value">1.0x</div>
+                    </div>
+                    <input type="range" id="world_engine_sensitivity" class="world-engine-slider" min="0.2" max="3" step="0.05">
+                </div>
+
+                <!-- Render Scale Slider -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Render scale">Render scale</div>
+                        <div class="world-engine-setting-value" id="world_engine_render_scale_value">100%</div>
+                    </div>
+                    <input type="range" id="world_engine_render_scale" class="world-engine-slider" min="0.5" max="1.5" step="0.05">
+                </div>
+
+                <!-- Invert Look Card -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Invert look (vertical)">Invert Look (Vertical)</span>
+                        <input type="checkbox" id="world_engine_invert_look">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Chat Rendering Toggles -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Show streaming chunks">Show streaming chunks</span>
+                        <input type="checkbox" id="world_engine_enable_streaming">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Show typing indicator">Show typing indicator</span>
+                        <input type="checkbox" id="world_engine_show_typing_indicator">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Allow autoreplies">Allow autoreplies</span>
+                        <input type="checkbox" id="world_engine_enable_autoreplies">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Shadows Toggle -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Enable shadows">Enable shadows</span>
+                        <input type="checkbox" id="world_engine_shadows">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Instructions Card -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Show instructions overlay">Show Overlay</span>
+                        <input type="checkbox" id="world_engine_show_instructions">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Chat Bubble Toggle -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Show chat bubble">Show chat bubble</span>
+                        <input type="checkbox" id="world_engine_show_chat_bubble">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                </div>
+
+                <!-- Weather Extras -->
+                <div class="world-engine-setting-card">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Rain intensity">Rain intensity</div>
+                        <div class="world-engine-setting-value" id="world_engine_rain_intensity_value">1.0x</div>
+                    </div>
+                    <input type="range" id="world_engine_rain_intensity" class="world-engine-slider" min="0" max="2" step="0.05">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Fog density">Fog density</div>
+                        <div class="world-engine-setting-value" id="world_engine_fog_density_value">1.0x</div>
+                    </div>
+                    <input type="range" id="world_engine_fog_density" class="world-engine-slider" min="0.2" max="3" step="0.05">
+                </div>
+
+                <!-- Cloud Layer -->
+                <div class="world-engine-setting-card">
+                    <label class="world-engine-toggle">
+                        <span class="world-engine-setting-label" data-i18n="Enable clouds">Enable clouds</span>
+                        <input type="checkbox" id="world_engine_enable_clouds">
+                        <span class="world-engine-toggle-track"></span>
+                    </label>
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Cloud density">Cloud density</div>
+                        <div class="world-engine-setting-value" id="world_engine_cloud_density_value">1.0x</div>
+                    </div>
+                    <input type="range" id="world_engine_cloud_density" class="world-engine-slider" min="0" max="2" step="0.05">
+                    <div class="world-engine-setting-header">
+                        <div class="world-engine-setting-label" data-i18n="Cloud speed">Cloud speed</div>
+                        <div class="world-engine-setting-value" id="world_engine_cloud_speed_value">0.6x</div>
+                    </div>
+                    <input type="range" id="world_engine_cloud_speed" class="world-engine-slider" min="0" max="2" step="0.05">
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

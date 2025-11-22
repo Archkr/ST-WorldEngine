@@ -1,0 +1,12 @@
+{
+    "display_name": "World Engine Testing",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "settings": "settings.html",
+    "css": "style.css",
+    "author": "Archkr",
+    "version": "0.1.0-BETA",
+    "homePage": "https://github.com/Archkr/ST-WorldEngine"
+}

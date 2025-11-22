@@ -1,0 +1,3061 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>World Engine</title>
+    <link rel="stylesheet" href="./styles.css">
+    <style>
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        #crosshair::before {
+            top: 9px;
+            left: 0;
+            width: 20px;
+            height: 2px;
+        }
+
+        #crosshair::after {
+            top: 0;
+            left: 9px;
+            width: 2px;
+            height: 20px;
+        }
+
+        #error-log {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #ff5555;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            z-index: 9999;
+            display: none;
+            max-width: 80%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="error-log"></div>
+    <div id="crosshair"></div>
+    <div id="instructions">
+        <h1>Controls</h1>
+        <p>Move: <strong>W A S D</strong></p>
+        <p>Jump: <strong>Space</strong></p>
+        <p>Look: <strong>Mouse</strong></p>
+    </div>
+
+    <div id="world_status_hud" aria-live="polite">
+        <div class="hud-row">
+            <span class="hud-label" data-i18n="Time">Time</span>
+            <span id="hud_time_value">--:--</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label" data-i18n="Weather">Weather</span>
+            <span id="hud_weather_value">--</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label" data-i18n="Location">Location</span>
+            <span id="hud_location_value">--</span>
+        </div>
+    </div>
+
+    <div id="chat_overlay" aria-label="World Engine chat" data-i18n="[aria-label]World Engine chat">
+        <div id="chat_log" aria-live="polite"></div>
+        <form id="chat_form" autocomplete="off">
+            <input id="chat_input" name="chat_input" type="text" placeholder="Type a message..." inputmode="text"
+                maxlength="1000" data-i18n="[placeholder]Type a message...;[aria-label]World Engine chat input">
+            <button type="submit" aria-label="Send Message" data-i18n="[aria-label]Send Message"></button>
+        </form>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const DEFAULT_CHAT_MESSAGE = 'The river is so clear today...';
+        const ASSISTANT_MESSAGE_EVENT = 'world-engine-assistant-message';
+        const CHAT_SPRITE_OFFSET = new THREE.Vector3(0, 2.9, 0);
+        const CHAT_HISTORY_LIMIT = 12;
+        const CHAT_WORLD_WIDTH = 12;
+        const TYPING_INDICATOR_TEXT = '…';
+        const AVATAR_WORLD_HEIGHT = 4.2;
+        const DEFAULT_AVATAR_ASPECT = 2 / 3;
+        const MIN_AVATAR_ASPECT = 0.45;
+        const MAX_AVATAR_ASPECT = 0.85;
+        const PLAYER_EYE_HEIGHT = 2.2;
+        const GRAVITY = 32.0;
+        const JUMP_FORCE = 13.0;
+        const PLAYER_RADIUS = 0.5;
+        const BRIDGE_HALF_WIDTH = 2.0;
+        const BRIDGE_COLLISION_MARGIN = 0.25;
+        const BRIDGE_STEP_TOLERANCE = 0.5;
+        const BRIDGE_HEIGHT_OFFSET = 0.2;
+
+        // --- TIME CONSTANTS ---
+        const DAY_DURATION_SECONDS = 600; // 10 minutes
+        const NIGHT_DURATION_SECONDS = 420; // 7 minutes
+        const DAY_HOURS_PER_SECOND = 12 / DAY_DURATION_SECONDS;
+        const NIGHT_HOURS_PER_SECOND = 12 / NIGHT_DURATION_SECONDS;
+
+        // --- SKY CONSTANTS ---
+        const SKYBOX_RADIUS = 500;
+        const STAR_COUNT = 8000;
+        const STAR_DUST_COUNT = 3200;
+        const CELESTIAL_DISTANCE = SKYBOX_RADIUS * 0.9;
+        const SUN_SCALE = 70;
+        const MOON_SCALE = 35;
+        const SUN_LIGHT_DISTANCE = 120;
+        const SHADOW_FRUSTUM_SIZE = 70;
+
+        const COLORS = {
+            sky: 0x87CEEB,
+            fog: 0xaaccff,
+            ground: 0x4a8a35,
+            groundDark: 0x356624,
+            water: 0x2e8ec4,
+            waterFoam: 0xffffff,
+            wood: 0x7c5029,
+            woodDark: 0x4a2e15,
+            stoneLight: 0x999999,
+            stone: 0x777777,
+            stoneDark: 0x555555,
+            treeHigh: 0x4A8C38,
+            treeLow: 0x2D5A22,
+            rock: 0x666666,
+            glow: 0xffaa00,
+            firefly: 0x88ffff
+        };
+
+        const TIME_KEYFRAMES = [
+            { hour: 0, skyColor: 0x04060b, fogColor: 0x0b0d14, fogDensity: 0.02, ambientSky: 0x141f2f, ambientGround: 0x050607, ambientIntensity: 0.25, sunColor: 0x223349, sunIntensity: 0.25, exposure: 0.85 },
+            { hour: 6, skyColor: 0xffb17a, fogColor: 0xf6d8bf, fogDensity: 0.018, ambientSky: 0xffe6c7, ambientGround: 0x43311f, ambientIntensity: 0.55, sunColor: 0xffe5b5, sunIntensity: 1.2, exposure: 1.1 },
+            { hour: 12, skyColor: COLORS.sky, fogColor: COLORS.fog, fogDensity: 0.012, ambientSky: 0xddeeff, ambientGround: 0x335533, ambientIntensity: 0.8, sunColor: 0xffffff, sunIntensity: 1.8, exposure: 1.3 },
+            { hour: 18, skyColor: 0xff784f, fogColor: 0xf8c7ac, fogDensity: 0.017, ambientSky: 0xffccaa, ambientGround: 0x3c2a23, ambientIntensity: 0.55, sunColor: 0xffc477, sunIntensity: 0.9, exposure: 1.02 },
+            { hour: 20, skyColor: 0x1b2431, fogColor: 0x111724, fogDensity: 0.0185, ambientSky: 0x1f2f44, ambientGround: 0x0c0f17, ambientIntensity: 0.4, sunColor: 0x62758a, sunIntensity: 0.55, exposure: 0.92 },
+            { hour: 24, skyColor: 0x04060b, fogColor: 0x0b0d14, fogDensity: 0.02, ambientSky: 0x141f2f, ambientGround: 0x050607, ambientIntensity: 0.25, sunColor: 0x223349, sunIntensity: 0.25, exposure: 0.85 },
+        ];
+
+        const WEATHER_PRESETS = ['clear', 'foggy', 'rainy'];
+        const CAMERA_FOV_RANGE = [40, 100];
+        const MOUSE_SENSITIVITY_RANGE = [0.2, 3];
+        const RENDER_SCALE_RANGE = [0.5, 1.5];
+        const RAIN_INTENSITY_RANGE = [0, 2];
+        const FOG_DENSITY_RANGE = [0.2, 3];
+        const CLOUD_DENSITY_RANGE = [0, 2];
+        const CLOUD_SPEED_RANGE = [0, 2];
+        const BASE_MOUSE_SENSITIVITY = 0.0025;
+        const RANDOM_RAIN_CHANCE = 0.12; // 12% chance per roll
+        const WEATHER_ROLL_INTERVAL = 60; // Seconds between weather rolls
+        const RAIN_DURATION_SECONDS = 300; // 5 minutes
+
+        const runtimeSettings = {
+            movementSpeed: 1.0,
+            invertLook: false,
+            showInstructions: true,
+            timeOfDay: 12,
+            weather: 'clear',
+            cameraFov: 60,
+            mouseSensitivity: 1.0,
+            shadowsEnabled: true,
+            renderScale: 1.0,
+            showChatBubbles: true,
+            rainIntensity: 1.0,
+            fogDensity: 1.0,
+            cloudsEnabled: true,
+            cloudDensity: 1.0,
+            cloudSpeed: 0.6,
+        };
+
+        const state = {
+            moveForward: false,
+            moveBackward: false,
+            moveLeft: false,
+            moveRight: false,
+            jump: false,
+            isGrounded: true,
+            velocity: new THREE.Vector3(),
+            yaw: 0,
+            pitch: 0,
+            lastTime: performance.now(),
+            isLocked: false,
+            isChatFocused: false,
+            chatText: DEFAULT_CHAT_MESSAGE,
+            chatHistory: [],
+            isTyping: false,
+            globalTime: 0,
+        };
+
+        let weatherRollTimer = 0;
+        let rainDurationTimer = 0;
+
+        let camera, scene, renderer;
+        let ambientLight, dirLight, moonLight;
+        let chatMaterial, chatSprite, avatarSprite;
+        let avatarBaseHeight = 0;
+        let avatarShadow = null;
+        let expressionClient;
+        let chatInput, chatForm;
+        let hudTimeValue, hudWeatherValue, hudLocationValue;
+        let hudUpdateTimer = 0;
+
+        // Sky elements
+        let skybox = null;
+        let skyUniforms = null;
+        let starField = null;
+        let starDustField = null;
+        let deepSpaceGroup = null;
+        let nebulaCloud = null;
+        let galaxySystem = null;
+        let galaxyCore = null;
+        let galaxySprites = [];
+        let sunSprite = null;
+        let moonSprite = null;
+        let cloudLayer = null;
+        let cloudUniforms = null;
+
+        const celestialState = {
+            sunDirection: new THREE.Vector3(1, 0.4, 0).normalize(),
+            moonDirection: new THREE.Vector3(-1, -0.2, 0).normalize(),
+            sunVisibility: 0,
+            moonVisibility: 0,
+        };
+        const celestialOffset = new THREE.Vector3();
+        const sunLightOffset = new THREE.Vector3();
+        const moonLightOffset = new THREE.Vector3();
+
+        const firefliesData = [];
+        const waterVertices = [];
+        const activeBridges = [];
+        const treeColliders = [];
+        let rainSystem = null;
+        let splashSystem = null;
+        let fogSystem = null;
+
+        window.WorldEngine = window.WorldEngine || {};
+        window.WorldEngine.updateChatMessage = updateChatMessage;
+        window.WorldEngine.applySettings = applySettings;
+        window.WorldEngine.receiveAssistantMessage = (message) => recordChatMessage('assistant', message);
+
+        window.addEventListener(ASSISTANT_MESSAGE_EVENT, (event) => {
+            const incoming = event?.detail?.message ?? event?.detail ?? '';
+            recordChatMessage('assistant', incoming);
+        });
+
+        window.addEventListener('message', handleIncomingMessage, false);
+
+        try {
+            init();
+            animate();
+        } catch (e) {
+            showError("Crash during init: " + e.message);
+            console.error(e);
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-log');
+            if (el) {
+                el.style.display = 'block';
+                el.textContent = msg;
+            }
+        }
+
+        function init() {
+            parseSettingsFromQuery();
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(COLORS.sky);
+            scene.fog = new THREE.FogExp2(COLORS.fog, 0.015);
+
+            createSkybox();
+
+            // Deep space container
+            deepSpaceGroup = new THREE.Group();
+            scene.add(deepSpaceGroup);
+
+            createStarField();
+            createStarDust();
+            createNebula();
+            createGalaxy();
+            createGalaxySprites();
+            createCelestialSprites();
+            createCloudLayer();
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
+
+            ambientLight = new THREE.HemisphereLight(0xddeeff, 0x224422, 0.6);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xfff0dd, 2.0);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = SUN_LIGHT_DISTANCE * 2;
+            dirLight.shadow.camera.left = -SHADOW_FRUSTUM_SIZE;
+            dirLight.shadow.camera.right = SHADOW_FRUSTUM_SIZE;
+            dirLight.shadow.camera.top = SHADOW_FRUSTUM_SIZE;
+            dirLight.shadow.camera.bottom = -SHADOW_FRUSTUM_SIZE;
+            dirLight.shadow.camera.updateProjectionMatrix();
+            scene.add(dirLight.target);
+            scene.add(dirLight);
+
+            moonLight = new THREE.DirectionalLight(0xaec6ff, 0.25);
+            moonLight.castShadow = false;
+            scene.add(moonLight.target);
+            scene.add(moonLight);
+
+            buildWorld();
+
+            const spawnX = 0;
+            const spawnZ = 12;
+            const groundAtSpawn = getBaseHeight(spawnX, spawnZ);
+            const spawnY = getCollisionHeight(spawnX, spawnZ, groundAtSpawn, true);
+            camera.position.set(spawnX, spawnY + PLAYER_EYE_HEIGHT, spawnZ);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+
+            document.body.appendChild(renderer.domElement);
+
+            updateRendererSettings();
+            setupPointerLock(renderer.domElement);
+            setupEvents();
+            setupChatUi();
+            setupStatusHud();
+            updateInstructionsVisibility();
+            updateEnvironmentFromSettings();
+        }
+
+        function getBaseHeight(x, z) {
+            const dist = Math.sqrt(x * x + z * z);
+            const angle = Math.atan2(z, x);
+
+            const noise =
+                Math.sin(angle * 2.2 + 1.0) * 2.0 +
+                Math.cos(angle * 5.1 + x * 0.05) * 1.2 +
+                Math.sin(angle * 8.3 + z * 0.1) * 0.8;
+
+            const effectiveDist = dist + noise;
+            let h = 0;
+
+            if (effectiveDist < 28) {
+                h = Math.cos(effectiveDist * 0.18) * 3.0;
+                if (h < -1.4) h = -1.8;
+                if (effectiveDist < 8 && h > 1.8) h = 1.8;
+            } else {
+                h = 1.0 + Math.sin(x * 0.1) * 0.5 + Math.cos(z * 0.15) * 0.5;
+            }
+            return h;
+        }
+
+        function getBridgeSurface(x, z) {
+            let surface = null;
+
+            for (const bridge of activeBridges) {
+                const dx = bridge.end.x - bridge.start.x;
+                const dz = bridge.end.z - bridge.start.z;
+                const lenSq = dx * dx + dz * dz;
+                if (lenSq === 0) continue;
+
+                const px = x - bridge.start.x;
+                const pz = z - bridge.start.z;
+                const t = THREE.MathUtils.clamp((px * dx + pz * dz) / lenSq, 0, 1);
+
+                const closestX = bridge.start.x + dx * t;
+                const closestZ = bridge.start.z + dz * t;
+                const lateralDistance = Math.hypot(x - closestX, z - closestZ);
+
+                if (lateralDistance <= BRIDGE_HALF_WIDTH + BRIDGE_COLLISION_MARGIN) {
+                    const point = bridge.curve.getPointAt(t);
+                    const height = point.y + BRIDGE_HEIGHT_OFFSET;
+
+                    if (!surface || lateralDistance < surface.lateralDistance) {
+                        surface = { height, lateralDistance, closestZ, t };
+                    }
+                }
+            }
+
+            return surface;
+        }
+
+        function getCollisionHeight(x, z, currentY, allowBridgeSnap = false) {
+            let h = getBaseHeight(x, z);
+
+            const dist = Math.sqrt(x * x + z * z);
+            if (dist < 3.2) {
+                h = Math.max(h, getBaseHeight(0, 0) + 0.6);
+            }
+
+            const bridgeSurface = getBridgeSurface(x, z);
+            if (bridgeSurface) {
+                const canSnapToBridge = allowBridgeSnap || (currentY !== undefined && currentY >= bridgeSurface.height - BRIDGE_STEP_TOLERANCE);
+                if (canSnapToBridge) {
+                    h = Math.max(h, bridgeSurface.height);
+                }
+            }
+
+            return h;
+        }
+
+        function buildWorld() {
+            createSculptedTerrain();
+            createRiverWater();
+            createForest();
+            createBridges();
+            createTower();
+            createPedestalAndAvatar();
+            createFireflies();
+        }
+
+        function createSkybox() {
+            if (!scene) return;
+            skyUniforms = {
+                topColor: { value: new THREE.Color(COLORS.sky) },
+                bottomColor: { value: new THREE.Color(COLORS.fog) },
+                nightMix: { value: 0 },
+            };
+
+            const geometry = new THREE.SphereGeometry(SKYBOX_RADIUS, 32, 32);
+            const material = new THREE.ShaderMaterial({
+                uniforms: skyUniforms,
+                vertexShader: /* glsl */`
+                    varying float vHeight;
+                    void main() {
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        vHeight = normalize(position).y * 0.5 + 0.5;
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: /* glsl */`
+                    varying float vHeight;
+                    uniform vec3 topColor;
+                    uniform vec3 bottomColor;
+                    uniform float nightMix;
+
+                    void main() {
+                        float h = clamp(pow(vHeight, 1.5), 0.0, 1.0);
+                        vec3 dayColor = mix(bottomColor, topColor, h);
+                        vec3 nightColor = mix(vec3(0.005, 0.02, 0.05), dayColor, 0.35);
+                        vec3 color = mix(dayColor, nightColor, nightMix);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.BackSide,
+                depthWrite: false,
+                fog: false,
+            });
+
+            skybox = new THREE.Mesh(geometry, material);
+            skybox.frustumCulled = false;
+            skybox.renderOrder = -1;
+            scene.add(skybox);
+        }
+
+        function createStarField() {
+            if (!deepSpaceGroup) return;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(STAR_COUNT * 3);
+            const colors = new Float32Array(STAR_COUNT * 3);
+            const sizes = new Float32Array(STAR_COUNT);
+            const twinklePhases = new Float32Array(STAR_COUNT);
+            const twinkleSpeeds = new Float32Array(STAR_COUNT);
+
+            // Pull stars closer to camera (0.7 * Radius) so they appear in front of the nebula (0.85 * Radius)
+            const starDistance = SKYBOX_RADIUS * 0.7;
+
+            const tmp = new THREE.Vector3();
+            for (let i = 0; i < STAR_COUNT; i++) {
+                do {
+                    tmp.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+                } while (tmp.lengthSq() < 0.01);
+                tmp.normalize().multiplyScalar(starDistance);
+                positions[i * 3] = tmp.x;
+                positions[i * 3 + 1] = tmp.y;
+                positions[i * 3 + 2] = tmp.z;
+
+                // Brighter stars
+                const starColor = new THREE.Color().setHSL(THREE.MathUtils.lerp(0.55, 0.75, Math.random()), Math.random() * 0.5, THREE.MathUtils.lerp(0.9, 1.0, Math.random()));
+                colors[i * 3] = starColor.r;
+                colors[i * 3 + 1] = starColor.g;
+                colors[i * 3 + 2] = starColor.b;
+
+                // Varied sizes with some larger "hero" stars
+                sizes[i] = Math.random() < 0.05 ? 4.0 : (Math.random() < 0.2 ? 2.5 : 1.5);
+
+                twinklePhases[i] = Math.random() * Math.PI * 2;
+                twinkleSpeeds[i] = THREE.MathUtils.lerp(0.6, 1.8, Math.random());
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            geometry.setAttribute('twinklePhase', new THREE.BufferAttribute(twinklePhases, 1));
+            geometry.setAttribute('twinkleSpeed', new THREE.BufferAttribute(twinkleSpeeds, 1));
+
+            const starTexture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 255, 1)' },
+                { offset: 0.2, color: 'rgba(255, 255, 255, 0.9)' },
+                { offset: 0.5, color: 'rgba(255, 255, 255, 0.3)' },
+                { offset: 1.0, color: 'rgba(255, 255, 255, 0)' },
+            ], 32);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointTexture: { value: starTexture },
+                    globalOpacity: { value: 1.5 }, // Boosted opacity
+                    time: { value: 0 },
+                },
+                vertexShader: `
+                    attribute float size;
+                    attribute float twinklePhase;
+                    attribute float twinkleSpeed;
+                    varying vec3 vColor;
+                    varying float vTwinklePhase;
+                    varying float vTwinkleSpeed;
+                    void main() {
+                        vColor = color;
+                        vTwinklePhase = twinklePhase;
+                        vTwinkleSpeed = twinkleSpeed;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (340.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D pointTexture;
+                    uniform float globalOpacity;
+                    uniform float time;
+                    varying vec3 vColor;
+                    varying float vTwinklePhase;
+                    varying float vTwinkleSpeed;
+                    void main() {
+                        vec4 tex = texture2D(pointTexture, gl_PointCoord);
+                        float twinkle = 0.65 + 0.35 * sin(time * vTwinkleSpeed + vTwinklePhase);
+                        float alpha = tex.a * globalOpacity * twinkle;
+                        if (alpha < 0.02) discard;
+                        gl_FragColor = vec4(vColor, alpha) * tex;
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthTest: true,
+                depthWrite: false,
+                transparent: true,
+                vertexColors: true,
+                fog: false
+            });
+
+            starField = new THREE.Points(geometry, material);
+            starField.userData.baseOpacity = 1.5;
+            starField.frustumCulled = false;
+            deepSpaceGroup.add(starField);
+        }
+
+        function createStarDust() {
+            if (!deepSpaceGroup) return;
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(STAR_DUST_COUNT * 3);
+            const colors = new Float32Array(STAR_DUST_COUNT * 3);
+            const sizes = new Float32Array(STAR_DUST_COUNT);
+
+            const dustDistance = SKYBOX_RADIUS * 0.9;
+            const tmp = new THREE.Vector3();
+
+            for (let i = 0; i < STAR_DUST_COUNT; i++) {
+                do {
+                    tmp.set(Math.random() * 2 - 1, (Math.random() * 2 - 1) * 0.7, Math.random() * 2 - 1);
+                } while (tmp.lengthSq() < 0.01);
+                tmp.normalize().multiplyScalar(dustDistance * THREE.MathUtils.lerp(0.82, 1.05, Math.random()));
+                positions[i * 3] = tmp.x;
+                positions[i * 3 + 1] = tmp.y;
+                positions[i * 3 + 2] = tmp.z;
+
+                const hue = THREE.MathUtils.lerp(0.56, 0.68, Math.random());
+                const saturation = THREE.MathUtils.lerp(0.25, 0.55, Math.random());
+                const lightness = THREE.MathUtils.lerp(0.55, 0.85, Math.random());
+                const dustColor = new THREE.Color().setHSL(hue, saturation, lightness);
+                colors[i * 3] = dustColor.r;
+                colors[i * 3 + 1] = dustColor.g;
+                colors[i * 3 + 2] = dustColor.b;
+
+                sizes[i] = THREE.MathUtils.lerp(0.6, 1.8, Math.random());
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const dustTexture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 255, 1)' },
+                { offset: 0.2, color: 'rgba(255, 255, 255, 0.9)' },
+                { offset: 0.6, color: 'rgba(255, 255, 255, 0.25)' },
+                { offset: 1.0, color: 'rgba(255, 255, 255, 0)' },
+            ], 32);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointTexture: { value: dustTexture },
+                    globalOpacity: { value: 0.8 },
+                },
+                vertexShader: `
+                    attribute float size;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D pointTexture;
+                    uniform float globalOpacity;
+                    varying vec3 vColor;
+                    void main() {
+                        vec4 tex = texture2D(pointTexture, gl_PointCoord);
+                        float alpha = tex.a * globalOpacity;
+                        if (alpha < 0.02) discard;
+                        gl_FragColor = vec4(vColor, alpha) * tex;
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthTest: true,
+                depthWrite: false,
+                transparent: true,
+                vertexColors: true,
+                fog: false,
+            });
+
+            starDustField = new THREE.Points(geometry, material);
+            starDustField.userData.baseOpacity = 0.8;
+            starDustField.frustumCulled = false;
+            deepSpaceGroup.add(starDustField);
+        }
+
+        function createNebula() {
+            if (!deepSpaceGroup) return;
+
+            const particleCount = 1600;
+            const geometry = new THREE.BufferGeometry();
+            const positions = [];
+            const colors = [];
+            const sizes = [];
+
+            // Push nebula further back so stars are in front
+            const nebulaDistance = SKYBOX_RADIUS * 0.85;
+            const mainCenter = new THREE.Vector3(1, 0.6, -0.4).normalize().multiplyScalar(nebulaDistance);
+
+            const palette = [
+                new THREE.Color(0x00ffff), // Cyan
+                new THREE.Color(0xff00ff), // Magenta
+                new THREE.Color(0x9933ff), // Deep Purple
+                new THREE.Color(0x4400cc), // Indigo
+            ];
+
+            // Create cloud-like clusters
+            for (let i = 0; i < particleCount; i++) {
+                // 3 main clusters roughly near the center area
+                const clusterOffset = new THREE.Vector3(
+                    (Math.random() - 0.5) * 200,
+                    (Math.random() - 0.5) * 100,
+                    (Math.random() - 0.5) * 200
+                );
+
+                const basePos = mainCenter.clone().add(clusterOffset);
+
+                // Add random cloud volume noise
+                const r = Math.random() * 80 + 10;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                const blob = new THREE.Vector3(
+                    r * Math.sin(phi) * Math.cos(theta),
+                    r * Math.sin(phi) * Math.sin(theta),
+                    r * Math.cos(phi)
+                );
+
+                // Flatten slightly to look like sheets/clouds
+                blob.y *= 0.6;
+
+                const pos = basePos.add(blob);
+
+                // Project back to shell distance to maintain skybox consistency
+                pos.normalize().multiplyScalar(nebulaDistance);
+
+                positions.push(pos.x, pos.y, pos.z);
+
+                const colorIndex = Math.floor(Math.random() * palette.length);
+                const mixedColor = palette[colorIndex].clone();
+                mixedColor.lerp(new THREE.Color(0xffffff), Math.random() * 0.3);
+
+                colors.push(mixedColor.r, mixedColor.g, mixedColor.b);
+                sizes.push(120 + Math.random() * 200); // Large, soft particles
+            }
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+
+            const texture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 255, 0.12)' },
+                { offset: 0.4, color: 'rgba(255, 255, 255, 0.05)' },
+                { offset: 1.0, color: 'rgba(0, 0, 0, 0)' }
+            ], 196);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointTexture: { value: texture },
+                    globalOpacity: { value: 0.75 },
+                },
+                vertexShader: /* glsl */`
+                    attribute float size;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (260.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: /* glsl */`
+                    uniform sampler2D pointTexture;
+                    uniform float globalOpacity;
+                    varying vec3 vColor;
+                    void main() {
+                        vec4 tex = texture2D(pointTexture, gl_PointCoord);
+                        float alpha = tex.a * globalOpacity;
+                        if (alpha < 0.02) discard;
+                        gl_FragColor = vec4(vColor, alpha) * tex;
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true,
+                transparent: true,
+                vertexColors: true,
+                fog: false,
+            });
+
+            nebulaCloud = new THREE.Points(geometry, material);
+            nebulaCloud.userData.baseOpacity = 0.75;
+            nebulaCloud.frustumCulled = false;
+            nebulaCloud.renderOrder = -1;
+            deepSpaceGroup.add(nebulaCloud);
+        }
+
+        function createGalaxy() {
+            if (!deepSpaceGroup) return;
+
+            const parameters = {
+                count: 4000,
+                radius: 160,
+                branches: 5,
+                spin: 1.8,
+                randomness: 0.36,
+                randomnessPower: 2.6,
+                coreColor: 0xffe9d4,
+                armColor: 0x94b5ff,
+                edgeColor: 0x1c2f6f,
+            };
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(parameters.count * 3);
+            const colors = new Float32Array(parameters.count * 3);
+            const sizes = new Float32Array(parameters.count);
+
+            const colorCore = new THREE.Color(parameters.coreColor);
+            const colorArms = new THREE.Color(parameters.armColor);
+            const colorEdge = new THREE.Color(parameters.edgeColor);
+            const center = new THREE.Vector3(-0.5, 0.6, 0.8).normalize().multiplyScalar(SKYBOX_RADIUS * 0.95);
+
+            for (let i = 0; i < parameters.count; i++) {
+                const radius = Math.pow(Math.random(), 0.75) * parameters.radius;
+                const spinAngle = radius * parameters.spin;
+                const branchAngle = (i % parameters.branches) / parameters.branches * Math.PI * 2;
+
+                const randomX = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomY = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius * 0.6;
+                const randomZ = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+
+                const x = Math.cos(branchAngle + spinAngle) * radius + randomX;
+                const y = randomY * 0.35;
+                const z = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+                const tempPos = new THREE.Vector3(x, y, z);
+                tempPos.applyAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI * 0.3);
+                tempPos.add(center);
+
+                positions[i * 3] = tempPos.x;
+                positions[i * 3 + 1] = tempPos.y;
+                positions[i * 3 + 2] = tempPos.z;
+
+                const t = radius / parameters.radius;
+                const mixedColor = colorCore.clone().lerp(colorArms, THREE.MathUtils.smoothstep(t, 0, 0.7)).lerp(colorEdge, t * 0.75);
+                colors[i * 3] = mixedColor.r;
+                colors[i * 3 + 1] = mixedColor.g;
+                colors[i * 3 + 2] = mixedColor.b;
+
+                sizes[i] = THREE.MathUtils.lerp(30, 10, t) * (0.8 + Math.random() * 0.4);
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const galaxyTexture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 255, 1)' },
+                { offset: 0.35, color: 'rgba(255, 255, 255, 0.8)' },
+                { offset: 1.0, color: 'rgba(0, 0, 0, 0)' }
+            ], 96);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointTexture: { value: galaxyTexture },
+                    globalOpacity: { value: 0.9 },
+                },
+                vertexShader: /* glsl */`
+                    attribute float size;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (220.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: /* glsl */`
+                    uniform sampler2D pointTexture;
+                    uniform float globalOpacity;
+                    varying vec3 vColor;
+                    void main() {
+                        vec4 tex = texture2D(pointTexture, gl_PointCoord);
+                        float alpha = tex.a * globalOpacity;
+                        if (alpha < 0.01) discard;
+                        gl_FragColor = vec4(vColor, alpha) * tex;
+                    }
+                `,
+                depthWrite: false,
+                depthTest: true,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true,
+                transparent: true,
+                fog: false,
+            });
+
+            galaxySystem = new THREE.Points(geometry, material);
+            galaxySystem.userData.baseOpacity = 1.05;
+            galaxySystem.frustumCulled = false;
+            deepSpaceGroup.add(galaxySystem);
+
+            const coreTexture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 235, 1)' },
+                { offset: 0.4, color: 'rgba(255, 230, 210, 0.7)' },
+                { offset: 1.0, color: 'rgba(255, 230, 210, 0)' },
+            ], 196);
+            const coreMaterial = new THREE.SpriteMaterial({
+                map: coreTexture,
+                transparent: true,
+                depthWrite: false,
+                depthTest: true,
+                blending: THREE.AdditiveBlending,
+                opacity: 0.85,
+                fog: false,
+                toneMapped: false,
+            });
+            galaxyCore = new THREE.Sprite(coreMaterial);
+            galaxyCore.userData.baseOpacity = 0.95;
+            galaxyCore.scale.setScalar(120);
+            galaxyCore.position.copy(center);
+            deepSpaceGroup.add(galaxyCore);
+        }
+
+        function createSpiralGalaxyTexture(size = 256) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const cx = size / 2, cy = size / 2;
+
+            // Draw Spiral Arms
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 400; i++) {
+                const angle = Math.random() * Math.PI * 4;
+                const radius = angle * (size * 0.06) + Math.random() * (size * 0.04);
+                if (radius > size / 2) continue;
+
+                // 2 main arms offset by PI
+                const armOffset = (Math.random() < 0.5 ? 0 : Math.PI);
+                const x = cx + Math.cos(angle + armOffset) * radius;
+                const y = cy + Math.sin(angle + armOffset) * radius;
+
+                // Opacity falls off with distance
+                const alpha = 1 - (radius / (size / 2));
+                ctx.globalAlpha = alpha * 0.6;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.random() * 2 + 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Bright central core
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.15);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.4, 'rgba(255,240,220,0.8)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, size, size);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            return texture;
+        }
+
+        function createGalaxySprites() {
+            if (!deepSpaceGroup) return;
+
+            galaxySprites.forEach(sprite => deepSpaceGroup.remove(sprite));
+            galaxySprites = [];
+
+            // Use new spiral texture
+            const spriteTexture = createSpiralGalaxyTexture(256);
+            const galaxyDistance = SKYBOX_RADIUS * 0.98; // Very far back
+
+            for (let i = 0; i < 10; i++) {
+                const hue = THREE.MathUtils.lerp(0.55, 0.85, Math.random());
+                const saturation = THREE.MathUtils.lerp(0.6, 0.9, Math.random());
+                const lightness = THREE.MathUtils.lerp(0.7, 0.9, Math.random());
+                const tint = new THREE.Color().setHSL(hue, saturation, lightness);
+
+                const material = new THREE.SpriteMaterial({
+                    map: spriteTexture,
+                    color: tint,
+                    transparent: true,
+                    opacity: 0.85,
+                    depthWrite: false,
+                    depthTest: true,
+                    blending: THREE.AdditiveBlending,
+                    fog: false,
+                    toneMapped: false,
+                });
+
+                const sprite = new THREE.Sprite(material);
+                sprite.userData.baseOpacity = 0.85;
+                // Reduce scale significantly for distance effect (25-50 range)
+                sprite.scale.setScalar(25 + Math.random() * 25);
+
+                // Spread across the entire upper hemisphere (y > 0.1 to avoid ground clipping)
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(Math.random() * 0.9 + 0.1); // 0 to 90 degrees essentially
+
+                const x = Math.sin(phi) * Math.cos(theta);
+                const y = Math.cos(phi);
+                const z = Math.sin(phi) * Math.sin(theta);
+
+                const dir = new THREE.Vector3(x, y, z).normalize().multiplyScalar(galaxyDistance);
+                sprite.position.copy(dir);
+
+                // Random 2D rotation for the sprite texture
+                sprite.material.rotation = Math.random() * Math.PI * 2;
+
+                deepSpaceGroup.add(sprite);
+                galaxySprites.push(sprite);
+            }
+        }
+
+        function createProceduralMoonTexture() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            const cx = size / 2;
+            const cy = size / 2;
+            const r = size / 2 - 2;
+
+            // Base
+            const grad = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
+            grad.addColorStop(0, '#eeeeee');
+            grad.addColorStop(1, '#cccccc');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Noise (Regolith)
+            for (let i = 0; i < 5000; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                if (Math.hypot(x - cx, y - cy) > r) continue;
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+                ctx.fillRect(x, y, 2, 2);
+            }
+
+            // Craters
+            function drawCrater(x, y, r) {
+                if (Math.hypot(x - cx, y - cy) + r > size / 2) return;
+
+                // Crater shadow
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fill();
+
+                // Crater floor
+                ctx.beginPath();
+                ctx.arc(x + r * 0.1, y + r * 0.1, r * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.fill();
+
+                // Highlight rim
+                ctx.beginPath();
+                ctx.arc(x - r * 0.1, y - r * 0.1, r * 0.9, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            // Large Maria (Dark spots)
+            ctx.fillStyle = 'rgba(80, 80, 90, 0.15)';
+            const maria = [
+                { x: 0.3, y: 0.3, r: 0.2 }, { x: 0.6, y: 0.2, r: 0.15 }, { x: 0.4, y: 0.6, r: 0.25 }, { x: 0.7, y: 0.5, r: 0.2 }
+            ];
+            maria.forEach(m => {
+                ctx.beginPath();
+                ctx.arc(cx + (m.x - 0.5) * size, cy + (m.y - 0.5) * size, m.r * size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // EASTER EGG: "Man in the Moon" Face
+            // We draw subtle dark circles for eyes and a curve for a smile using the same "maria" color style
+            ctx.fillStyle = 'rgba(60, 60, 70, 0.25)'; // Slightly darker for visibility
+
+            // Left Eye
+            ctx.beginPath();
+            ctx.arc(cx - 50, cy - 40, 25, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Right Eye
+            ctx.beginPath();
+            ctx.arc(cx + 50, cy - 40, 25, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Smile
+            ctx.lineWidth = 20;
+            ctx.strokeStyle = 'rgba(60, 60, 70, 0.25)';
+            ctx.beginPath();
+            ctx.arc(cx, cy - 20, 90, 0.2 * Math.PI, 0.8 * Math.PI);
+            ctx.stroke();
+
+
+            // Random small craters
+            for (let i = 0; i < 40; i++) {
+                const cr = 5 + Math.random() * 15;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * (r - cr);
+                drawCrater(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist, cr);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            return texture;
+        }
+
+        function createCelestialSprites() {
+            if (!scene) return;
+            const sunTexture = createRadialTexture([
+                { offset: 0.0, color: 'rgba(255, 255, 255, 1)' },
+                { offset: 0.4, color: 'rgba(255, 226, 173, 0.95)' },
+                { offset: 1.0, color: 'rgba(255, 183, 77, 0)' },
+            ]);
+
+            const moonTexture = createProceduralMoonTexture();
+
+            const sunMaterial = new THREE.SpriteMaterial({
+                map: sunTexture,
+                transparent: true,
+                depthWrite: false,
+                depthTest: true,
+                blending: THREE.AdditiveBlending,
+                opacity: 0,
+                toneMapped: false,
+                fog: false,
+            });
+            const moonMaterial = new THREE.SpriteMaterial({
+                map: moonTexture,
+                transparent: true,
+                depthWrite: false,
+                depthTest: true,
+                opacity: 0,
+                toneMapped: false,
+                fog: false,
+            });
+
+            sunSprite = new THREE.Sprite(sunMaterial);
+            sunSprite.scale.setScalar(SUN_SCALE);
+            scene.add(sunSprite);
+
+            moonSprite = new THREE.Sprite(moonMaterial);
+            moonSprite.scale.setScalar(MOON_SCALE);
+            scene.add(moonSprite);
+        }
+
+        function createCloudLayer() {
+            if (!scene) return;
+
+            cloudUniforms = {
+                time: { value: 0 },
+                density: { value: runtimeSettings.cloudDensity },
+                speed: { value: runtimeSettings.cloudSpeed },
+                baseColor: { value: new THREE.Color(1, 1, 1) },
+                opacity: { value: 0.4 },
+            };
+
+            const geometry = new THREE.PlaneGeometry(320, 320, 1, 1);
+            const material = new THREE.ShaderMaterial({
+                uniforms: cloudUniforms,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                vertexShader: /* glsl */`
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: /* glsl */`
+                    varying vec2 vUv;
+                    uniform float time;
+                    uniform float density;
+                    uniform float speed;
+                    uniform vec3 baseColor;
+                    uniform float opacity;
+
+                    float hash(vec2 p) {
+                        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                    }
+
+                    float noise(vec2 p) {
+                        vec2 i = floor(p);
+                        vec2 f = fract(p);
+
+                        float a = hash(i);
+                        float b = hash(i + vec2(1.0, 0.0));
+                        float c = hash(i + vec2(0.0, 1.0));
+                        float d = hash(i + vec2(1.0, 1.0));
+
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+
+                    float fbm(vec2 p) {
+                        float value = 0.0;
+                        float amp = 0.55;
+                        for (int i = 0; i < 5; i++) {
+                            value += amp * noise(p);
+                            p *= 2.35;
+                            amp *= 0.55;
+                        }
+                        return value;
+                    }
+
+                    void main() {
+                        float densityClamp = clamp(density, 0.0, 2.0);
+                        vec2 p = (vUv - 0.5) * 6.0;
+                        p.x += time * 0.06 * speed;
+                        p.y += time * 0.035 * speed;
+
+                        float base = fbm(p);
+                        float detail = fbm(p * 2.1 + 6.0);
+
+                        // More responsive coverage based on density
+                        float coverage = mix(0.2, 0.7, smoothstep(0.0, 1.5, densityClamp));
+                        float mask = smoothstep(coverage - 0.2, coverage + 0.1, base + detail * 0.35);
+
+                        // Radial vignette to hide hard edges
+                        vec2 centerDist = vUv * 2.0 - 1.0;
+                        float vignette = 1.0 - dot(centerDist, centerDist);
+                        vignette = smoothstep(0.0, 0.5, vignette);
+
+                        float alpha = mask * opacity * densityClamp * vignette;
+                        if (alpha < 0.01) discard;
+                        gl_FragColor = vec4(baseColor, alpha);
+                    }
+                `,
+            });
+
+            cloudLayer = new THREE.Mesh(geometry, material);
+            cloudLayer.rotation.x = -Math.PI / 2;
+            cloudLayer.position.y = 38;
+            cloudLayer.visible = false;
+            scene.add(cloudLayer);
+        }
+
+        function createRadialTexture(stops, size = 256) {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size / 2);
+            stops.forEach(stop => gradient.addColorStop(stop.offset, stop.color));
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        function createSculptedTerrain() {
+            const geometry = new THREE.PlaneGeometry(120, 120, 128, 128);
+            const posAttribute = geometry.attributes.position;
+            const colors = [];
+
+            for (let i = 0; i < posAttribute.count; i++) {
+                const x = posAttribute.getX(i);
+                const y = posAttribute.getY(i);
+                let z = getBaseHeight(x, y);
+                // Removed random displacement to match physics collision
+                posAttribute.setZ(i, z);
+
+                if (z < -0.8) {
+                    colors.push(0.2, 0.4, 0.15);
+                } else {
+                    colors.push(0.29, 0.54, 0.21);
+                }
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                vertexColors: true, roughness: 1.0, flatShading: true
+            });
+
+            const ground = new THREE.Mesh(geometry, material);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+
+        function createRiverWater() {
+            const waterGeo = new THREE.PlaneGeometry(60, 60, 64, 64);
+            const posAttribute = waterGeo.attributes.position;
+
+            for (let i = 0; i < posAttribute.count; i++) {
+                waterVertices.push({
+                    x: posAttribute.getX(i),
+                    y: posAttribute.getY(i),
+                    z: posAttribute.getZ(i),
+                    ang: Math.random() * Math.PI * 2,
+                    amp: 0.05 + Math.random() * 0.05
+                });
+            }
+
+            const material = new THREE.MeshPhongMaterial({
+                color: COLORS.water,
+                emissive: 0x001133,
+                specular: 0x555555,
+                shininess: 100,
+                opacity: 0.8,
+                transparent: true,
+            });
+
+            const water = new THREE.Mesh(waterGeo, material);
+            water.rotation.x = -Math.PI / 2;
+            water.position.y = -1.0;
+            water.name = "water";
+            scene.add(water);
+        }
+
+        function createTree(x, z, scale = 1) {
+            const y = getBaseHeight(x, z);
+            if (y < -0.5) return;
+
+            // Add collision data for this tree
+            // Trunk radius is roughly 0.2 * scale to 0.5 * scale
+            // We use a generous collision radius of 0.5 * scale
+            treeColliders.push({ x, z, r: 0.5 * scale });
+
+            const treeGroup = new THREE.Group();
+
+            const trunkGeo = new THREE.CylinderGeometry(0.2 * scale, 0.5 * scale, 2.5 * scale, 6);
+            const trunkPos = trunkGeo.attributes.position;
+            for (let i = 0; i < trunkPos.count; i++) {
+                trunkPos.setX(i, trunkPos.getX(i) + (Math.random() - 0.5) * 0.15);
+                trunkPos.setZ(i, trunkPos.getZ(i) + (Math.random() - 0.5) * 0.15);
+            }
+            trunkGeo.computeVertexNormals();
+            const trunk = new THREE.Mesh(trunkGeo, new THREE.MeshStandardMaterial({ color: COLORS.woodDark, flatShading: true }));
+            trunk.position.y = 1.25 * scale;
+            trunk.castShadow = true; trunk.receiveShadow = true;
+            treeGroup.add(trunk);
+
+            const colorVar = new THREE.Color(COLORS.treeHigh);
+            colorVar.offsetHSL(0, 0, (Math.random() - 0.5) * 0.1);
+            const leavesMat = new THREE.MeshStandardMaterial({ color: colorVar, roughness: 0.8, flatShading: true });
+
+            const levels = 5;
+            for (let i = 0; i < levels; i++) {
+                const t = i / (levels - 1);
+                const radius = (2.5 - t * 2.2) * scale;
+                const height = 1.8 * scale;
+                const coneGeo = new THREE.ConeGeometry(radius, height, 7);
+
+                const pos = coneGeo.attributes.position;
+                for (let v = 0; v < pos.count; v++) {
+                    if (pos.getY(v) < height / 2 - 0.1) {
+                        // Reduced noise to fix "holes"
+                        const noise = 0.15 * scale;
+                        pos.setX(v, pos.getX(v) + (Math.random() - 0.5) * noise);
+                        // No Y displacement to prevent vertical gaps
+                        pos.setZ(v, pos.getZ(v) + (Math.random() - 0.5) * noise);
+                    }
+                }
+                coneGeo.computeVertexNormals();
+                const cone = new THREE.Mesh(coneGeo, leavesMat);
+                cone.position.y = (2.5 + i * 1.2) * scale;
+                cone.rotation.y = Math.random() * Math.PI;
+                cone.castShadow = true; cone.receiveShadow = true;
+                treeGroup.add(cone);
+            }
+
+            treeGroup.position.set(x, y, z);
+            treeGroup.rotation.set((Math.random() - 0.5) * 0.1, Math.random() * Math.PI, (Math.random() - 0.5) * 0.1);
+            scene.add(treeGroup);
+        }
+
+        function createStylizedBridge(start, end) {
+            const bridgeGroup = new THREE.Group();
+            const length = start.distanceTo(end);
+            const height = 4.0;
+
+            const dir = new THREE.Vector3().subVectors(end, start).normalize();
+            const c1 = new THREE.Vector3().copy(start).add(dir.clone().multiplyScalar(length * 0.25)).add(new THREE.Vector3(0, height, 0));
+            const c2 = new THREE.Vector3().copy(end).sub(dir.clone().multiplyScalar(length * 0.25)).add(new THREE.Vector3(0, height, 0));
+
+            const curve = new THREE.CubicBezierCurve3(start, c1, c2, end);
+            activeBridges.push({ curve, start, end });
+
+            const foundationGeo = new THREE.BoxGeometry(4.5, 4, 3);
+            const stoneDarkMat = new THREE.MeshStandardMaterial({ color: COLORS.stoneDark, roughness: 1.0, flatShading: true });
+            const stoneMat = new THREE.MeshStandardMaterial({ color: COLORS.stone, roughness: 0.9, flatShading: true });
+
+            const startFoundation = new THREE.Mesh(foundationGeo, stoneDarkMat);
+            startFoundation.position.copy(start).add(new THREE.Vector3(0, -2, 0));
+            startFoundation.lookAt(end.x, startFoundation.position.y, end.z);
+            bridgeGroup.add(startFoundation);
+
+            const endFoundation = new THREE.Mesh(foundationGeo, stoneDarkMat);
+            endFoundation.position.copy(end).add(new THREE.Vector3(0, -2, 0));
+            endFoundation.lookAt(start.x, endFoundation.position.y, start.z);
+            bridgeGroup.add(endFoundation);
+
+            const points = curve.getPoints(24);
+            const plankWidth = 4;
+            const plankDepth = 1.2;
+            const plankHeight = 0.4;
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const pt = points[i];
+                const nextPt = points[i + 1];
+
+                const geo = new THREE.BoxGeometry(plankWidth + (Math.random() - 0.5), plankHeight, plankDepth + (Math.random() * 0.2));
+                const pos = geo.attributes.position;
+                for (let v = 0; v < pos.count; v++) {
+                    pos.setX(v, pos.getX(v) + (Math.random() - 0.5) * 0.1);
+                    pos.setY(v, pos.getY(v) + (Math.random() - 0.5) * 0.1);
+                    pos.setZ(v, pos.getZ(v) + (Math.random() - 0.5) * 0.1);
+                }
+                geo.computeVertexNormals();
+
+                const stone = new THREE.Mesh(geo, stoneMat);
+                const midSeg = new THREE.Vector3().addVectors(pt, nextPt).multiplyScalar(0.5);
+                stone.position.copy(midSeg);
+                stone.lookAt(nextPt);
+                stone.castShadow = true; stone.receiveShadow = true;
+                bridgeGroup.add(stone);
+
+                if (i % 3 === 0 || i === points.length - 2) {
+                    createRailingPost(pt, nextPt, plankWidth, stoneDarkMat, bridgeGroup);
+                }
+            }
+            createArchSupport(curve.getPointAt(0.25), curve.getPointAt(0.3), plankWidth, stoneDarkMat, bridgeGroup);
+            createArchSupport(curve.getPointAt(0.75), curve.getPointAt(0.7), plankWidth, stoneDarkMat, bridgeGroup);
+
+            scene.add(bridgeGroup);
+        }
+
+        function createRailingPost(pos, lookAtTarget, width, mat, group) {
+            const postH = 1.5;
+            const offset = width / 2 - 0.2;
+            const geo = new THREE.BoxGeometry(0.6, postH, 0.6);
+            const capGeo = new THREE.ConeGeometry(0.4, 0.4, 4);
+
+            const left = new THREE.Mesh(geo, mat);
+            left.position.copy(pos);
+            left.lookAt(lookAtTarget);
+            left.translateX(-offset);
+            left.translateY(postH / 2);
+            left.castShadow = true; left.receiveShadow = true;
+            group.add(left);
+
+            const capL = new THREE.Mesh(capGeo, mat);
+            capL.position.set(0, postH / 2 + 0.2, 0);
+            left.add(capL);
+
+            const right = new THREE.Mesh(geo, mat);
+            right.position.copy(pos);
+            right.lookAt(lookAtTarget);
+            right.translateX(offset);
+            right.translateY(postH / 2);
+            right.castShadow = true; right.receiveShadow = true;
+            group.add(right);
+
+            const capR = new THREE.Mesh(capGeo, mat);
+            capR.position.set(0, postH / 2 + 0.2, 0);
+            right.add(capR);
+        }
+
+        function createArchSupport(topPos, lookDir, width, mat, group) {
+            const height = topPos.y + 2;
+            const geo = new THREE.BoxGeometry(width - 1, height, 1.5);
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(topPos.x, topPos.y - height / 2 - 0.5, topPos.z);
+            mesh.lookAt(lookDir.x, mesh.position.y, lookDir.z);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            group.add(mesh);
+        }
+
+        function createBridges() {
+            const start1 = new THREE.Vector3(0, getBaseHeight(0, 32) - 0.2, 32);
+            const end1 = new THREE.Vector3(0, getBaseHeight(0, 7) - 0.2, 7);
+            createStylizedBridge(start1, end1);
+
+            const start2 = new THREE.Vector3(0, getBaseHeight(0, -32) - 0.2, -32);
+            const end2 = new THREE.Vector3(0, getBaseHeight(0, -7) - 0.2, -7);
+            createStylizedBridge(start2, end2);
+        }
+
+        function createTower() {
+            const towerGroup = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: 0x666677, flatShading: true });
+
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 20, 7), mat);
+            base.position.y = 10;
+            towerGroup.add(base);
+
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(5.5, 8, 7), new THREE.MeshStandardMaterial({ color: 0x333344 }));
+            roof.position.y = 24;
+            towerGroup.add(roof);
+
+            towerGroup.position.set(-30, -5, -40);
+            scene.add(towerGroup);
+        }
+
+        function createPedestalAndAvatar() {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.6, flatShading: true });
+
+            const step1 = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.8, 0.15, 8), mat);
+            step1.receiveShadow = true;
+            group.add(step1);
+
+            const step2 = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.3, 0.15, 8), mat);
+            step2.receiveShadow = true;
+            step2.position.y = 0.15;
+            group.add(step2);
+
+            const top = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.0, 0.15, 8), mat);
+            top.receiveShadow = true;
+            top.position.y = 0.3;
+            group.add(top);
+
+            const h = getBaseHeight(0, 0);
+            group.position.set(0, h - 0.05, 0);
+            scene.add(group);
+
+            const loader = new THREE.TextureLoader();
+
+            const avatarMaterial = new THREE.SpriteMaterial({
+                transparent: true,
+                toneMapped: false,
+                fog: false,
+                depthTest: true,
+                depthWrite: false
+            });
+
+            avatarSprite = new THREE.Sprite(avatarMaterial);
+            avatarSprite.renderOrder = 5;
+            avatarBaseHeight = (h - 0.05) + 0.375;
+
+            setAvatarSpriteDimensions();
+            avatarSprite.position.set(0, avatarBaseHeight + AVATAR_WORLD_HEIGHT / 2, 0);
+            scene.add(avatarSprite);
+
+            const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.2, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
+            shadow.rotation.x = -Math.PI / 2;
+            avatarShadow = shadow;
+            avatarSprite.add(shadow);
+            updateAvatarShadow();
+
+            import('./dist/expression-listener.js')
+                .then(module => {
+                    const { ExpressionTextureClient } = module;
+                    expressionClient = new ExpressionTextureClient({
+                        sprite: avatarSprite,
+                        textureLoader: loader,
+                        onTextureApplied: handleAvatarTextureApplied
+                    });
+                    if (expressionClient?.fallbackUrl) expressionClient.swapTexture(expressionClient.fallbackUrl);
+                    console.log("Expression Texture Client loaded.");
+                })
+                .catch(err => {
+                    console.warn("Expression Texture Client failed to load (Avatar expressions disabled).", err);
+                });
+
+            chatMaterial = new THREE.SpriteMaterial({
+                transparent: true,
+                depthTest: true,
+                depthWrite: false,
+                toneMapped: false,
+                fog: false
+            });
+            chatSprite = new THREE.Sprite(chatMaterial);
+            chatSprite.renderOrder = 10;
+            chatSprite.scale.set(CHAT_WORLD_WIDTH, 3.5, 1);
+            scene.add(chatSprite);
+        }
+
+        function createForest() {
+            createTree(-5, 2, 1.3);
+            createTree(4, -3, 1.2);
+
+            for (let i = 0; i < 180; i++) {
+                const r = 20 + Math.random() * 40;
+                const a = Math.random() * Math.PI * 2;
+                const x = Math.cos(a) * r;
+                const z = Math.sin(a) * r;
+
+                if (Math.abs(x) < 4.5 && Math.abs(z) < 38 && Math.abs(z) > 3) continue;
+                createTree(x, z, 1.2 + Math.random() * 1.5);
+            }
+
+            const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+            const rockMat = new THREE.MeshStandardMaterial({ color: COLORS.rock, flatShading: true });
+
+            for (let i = 0; i < 40; i++) {
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                const r = 4 + Math.random() * 40;
+                const a = Math.random() * Math.PI * 2;
+                const x = Math.cos(a) * r;
+                const z = Math.sin(a) * r;
+                let y = getBaseHeight(x, z);
+                rock.position.set(x, y, z);
+                if (y < -0.5) rock.position.y -= 0.3;
+                rock.scale.setScalar(0.3 + Math.random() * 0.8);
+                rock.rotation.set(Math.random(), Math.random(), Math.random());
+                rock.castShadow = true; rock.receiveShadow = true;
+                scene.add(rock);
+            }
+        }
+
+        function createFireflies() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 80;
+            const positions = new Float32Array(count * 3);
+            const speeds = [];
+
+            for (let i = 0; i < count; i++) {
+                const r = Math.random() * 25;
+                const a = Math.random() * Math.PI * 2;
+                positions[i * 3] = Math.cos(a) * r;
+                positions[i * 3 + 1] = Math.random() * 4;
+                positions[i * 3 + 2] = Math.sin(a) * r;
+                speeds.push({
+                    y: 0.005 + Math.random() * 0.01,
+                    offset: Math.random() * Math.PI
+                });
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: COLORS.firefly, size: 0.15, transparent: true,
+                opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+
+            const particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+            firefliesData.push({ mesh: particles, data: speeds });
+        }
+
+        const avatarCache = new Map();
+
+        function updateChatMessage(message, role = 'assistant', name = null, avatar = null) { recordChatMessage(role, message, name, avatar); }
+        function recordChatMessage(role, message, name = null, avatar = null, overwrite = false, isTyping = false) {
+            const normalizedRole = normalizeRole(role);
+            const text = String(message || '').trim();
+
+            if (!text) {
+                if (overwrite && state.chatHistory.length > 0) {
+                    const last = state.chatHistory[state.chatHistory.length - 1];
+                    if (last.role === normalizedRole && last.isTyping) {
+                        state.chatHistory.pop();
+                        renderChatBubble();
+                    }
+                }
+                return;
+            }
+
+            if (overwrite && state.chatHistory.length > 0) {
+                const last = state.chatHistory[state.chatHistory.length - 1];
+                if (last.role === normalizedRole) {
+                    last.text = text;
+                    if (name) last.name = name;
+                    if (avatar) last.avatar = avatar;
+                    last.isTyping = isTyping;
+                    renderChatBubble();
+                    return;
+                }
+            }
+
+            state.chatHistory.push({
+                role: normalizedRole,
+                text,
+                name: name,
+                avatar: avatar,
+                isTyping,
+            });
+            if (state.chatHistory.length > CHAT_HISTORY_LIMIT) state.chatHistory.shift();
+            renderChatBubble();
+        }
+
+        function normalizeRole(role) {
+            if (role === 'assistant') return 'assistant';
+            if (role === 'user') return 'user';
+            return 'system';
+        }
+
+        function renderChatBubble() {
+            if (!chatMaterial) return;
+            if (chatMaterial.map) chatMaterial.map.dispose();
+            const entries = state.chatHistory.filter(m => m.role === 'assistant').slice(-1);
+            if (!runtimeSettings.showChatBubbles || entries.length === 0) { chatSprite.visible = false; return; }
+
+            const entry = entries[0];
+
+            // Preload avatar if needed
+            if (entry.avatar && !avatarCache.has(entry.avatar)) {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.src = entry.avatar;
+                img.onload = () => {
+                    avatarCache.set(entry.avatar, img);
+                    renderChatBubble(); // Re-render when loaded
+                };
+                // Cache a placeholder or null to prevent multiple loads
+                avatarCache.set(entry.avatar, null);
+            }
+
+            chatSprite.visible = true;
+            const { texture, aspectRatio } = createChatTexture(entry);
+            chatMaterial.map = texture;
+            chatMaterial.needsUpdate = true;
+            const newHeight = CHAT_WORLD_WIDTH / aspectRatio;
+            chatSprite.scale.set(CHAT_WORLD_WIDTH, newHeight, 1);
+            chatSprite.userData.height = newHeight;
+        }
+
+        function createChatTexture(entry) {
+            const padding = 40;
+            const avatarSize = 100;
+            const avatarMargin = 30;
+            const headerHeight = Math.max(60, avatarSize); // Header accommodates avatar
+            const lineHeight = 52;
+            const canvasWidth = 1400; // Wider canvas
+            const maxWidth = canvasWidth - (padding * 2);
+            const tailHeight = 40;
+
+            const mCanvas = document.createElement('canvas');
+            const mCtx = mCanvas.getContext('2d');
+            mCtx.font = '500 42px "Inter", "Segoe UI", sans-serif';
+
+            // Calculate layout
+            const hasAvatar = entry.avatar && avatarCache.get(entry.avatar);
+
+            // Text starts below the header (avatar + name)
+            const textStartX = padding + 20;
+            const textMaxWidth = maxWidth - 40; // Full width minus internal padding
+
+            const parsedTokens = parseChatFormatting(entry.text);
+            const formattedLines = layoutChatLines(mCtx, parsedTokens, textMaxWidth);
+
+            // Calculate total height
+            // Header + Spacing + Text + Padding + Tail
+            const contentHeight = (formattedLines.length * lineHeight);
+            const totalHeight = padding + headerHeight + 20 + contentHeight + padding + tailHeight;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = Math.max(300, totalHeight);
+            const ctx = canvas.getContext('2d');
+            const bubbleHeight = canvas.height - tailHeight - 30;
+
+            // Draw Bubble Background
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 4;
+
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 40;
+            ctx.shadowOffsetY = 20;
+
+            roundRect(ctx, 20, 20, canvas.width - 40, bubbleHeight, 40, true, true);
+            ctx.shadowColor = 'transparent';
+
+            // Draw Tail
+            ctx.beginPath();
+            const tailX = canvas.width / 2;
+            const tailY = 20 + bubbleHeight;
+            ctx.moveTo(tailX - 30, tailY);
+            ctx.lineTo(tailX, tailY + tailHeight);
+            ctx.lineTo(tailX + 30, tailY);
+            ctx.fillStyle = 'rgba(30, 33, 36, 0.95)';
+            ctx.fill();
+
+            // Draw Avatar (Top Left)
+            if (hasAvatar) {
+                const img = avatarCache.get(entry.avatar);
+                if (img) {
+                    ctx.save();
+                    ctx.beginPath();
+                    const avX = padding + 20;
+                    const avY = padding + 20;
+                    ctx.arc(avX + avatarSize / 2, avY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.clip();
+                    ctx.drawImage(img, avX, avY, avatarSize, avatarSize);
+                    ctx.restore();
+
+                    // Avatar border
+                    ctx.beginPath();
+                    ctx.arc(avX + avatarSize / 2, avY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+
+            // Draw Name (Right of Avatar, Vertically Centered relative to Avatar)
+            ctx.font = 'bold 48px "Inter", sans-serif'; // Slightly larger name
+            ctx.fillStyle = '#0078d7'; // Accent color
+            ctx.textBaseline = 'middle';
+
+            const nameX = hasAvatar ? (padding + 20 + avatarSize + avatarMargin) : (padding + 20);
+            const nameY = padding + 20 + (avatarSize / 2);
+
+            const displayName = entry.name || "ASSISTANT";
+            ctx.fillText(displayName.toUpperCase(), nameX, nameY);
+
+            // Draw Text (Below Header)
+            ctx.font = '400 42px "Inter", "Segoe UI", sans-serif';
+            ctx.fillStyle = '#e0e0e0';
+            ctx.textBaseline = 'top';
+
+            let textY = padding + headerHeight + 20; // Start below header
+
+            formattedLines.forEach(line => {
+                let textX = textStartX;
+                line.forEach(segment => {
+                    ctx.fillStyle = getChatFillColor(segment.style);
+                    ctx.fillText(segment.text, textX, textY);
+                    textX += segment.width;
+                });
+                textY += lineHeight;
+            });
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return { texture: tex, aspectRatio: canvas.width / canvas.height };
+        }
+
+        function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+            ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.closePath();
+            if (fill) ctx.fill(); if (stroke) ctx.stroke();
+        }
+
+        function parseChatFormatting(message = '') {
+            const tokens = [];
+            let buffer = '';
+            let inAction = false;
+            let inQuote = false;
+
+            const pushBuffer = () => {
+                if (!buffer) return;
+                tokens.push({ text: buffer, style: inAction ? 'action' : (inQuote ? 'quote' : 'normal') });
+                buffer = '';
+            };
+
+            const normalized = message.replace(/\r/g, '');
+
+            for (let i = 0; i < normalized.length; i++) {
+                const char = normalized[i];
+
+                if (char === '*' && !inQuote) {
+                    pushBuffer();
+                    inAction = !inAction;
+                    continue;
+                }
+
+                if (char === '"' && !inAction) {
+                    pushBuffer();
+                    if (inQuote) {
+                        buffer += '"';
+                        pushBuffer();
+                        inQuote = false;
+                    } else {
+                        inQuote = true;
+                        buffer += '"';
+                        pushBuffer();
+                    }
+                    continue;
+                }
+
+                buffer += char;
+            }
+
+            pushBuffer();
+            return tokens.length ? tokens : [{ text: '', style: 'normal' }];
+        }
+
+        function layoutChatLines(ctx, tokens, maxWidth) {
+            const lines = [];
+            let currentLine = [];
+            let lineWidth = 0;
+
+            const pushLine = () => {
+                lines.push(currentLine.length ? currentLine : [{ text: '', style: 'normal', width: 0 }]);
+                currentLine = [];
+                lineWidth = 0;
+            };
+
+            tokens.forEach((token) => {
+                const segments = token.text.split(/(\s+)/);
+                segments.forEach((segment) => {
+                    if (!segment) return;
+                    const newlineParts = segment.split('\n');
+                    newlineParts.forEach((part, index) => {
+                        if (part) {
+                            const width = ctx.measureText(part).width;
+                            const isWhitespace = /^\s+$/.test(part);
+                            if (!isWhitespace && lineWidth + width > maxWidth && currentLine.length) {
+                                pushLine();
+                            }
+                            if (!(isWhitespace && !lineWidth)) {
+                                currentLine.push({ text: part, style: token.style, width });
+                                lineWidth += width;
+                            }
+                        }
+                        if (index < newlineParts.length - 1) {
+                            pushLine();
+                        }
+                    });
+                });
+            });
+
+            if (currentLine.length) {
+                pushLine();
+            } else if (!lines.length) {
+                lines.push([{ text: '', style: 'normal', width: 0 }]);
+            }
+
+            return lines;
+        }
+
+        function getChatFillColor(style) {
+            switch (style) {
+                case 'action': return '#c0c0c0';
+                case 'quote': return '#9fdcff';
+                default: return '#e0e0e0';
+            }
+        }
+
+        function handleAvatarTextureApplied(texture) {
+            const image = texture?.image;
+            const aspectRatio = image?.width && image?.height ? image.width / image.height : null;
+            setAvatarSpriteDimensions(aspectRatio);
+        }
+
+        function setAvatarSpriteDimensions(aspectRatio = DEFAULT_AVATAR_ASPECT) {
+            if (!avatarSprite) return;
+            const aspect = THREE.MathUtils.clamp(aspectRatio || DEFAULT_AVATAR_ASPECT, MIN_AVATAR_ASPECT, MAX_AVATAR_ASPECT);
+            const width = AVATAR_WORLD_HEIGHT * aspect;
+            avatarSprite.scale.set(width, AVATAR_WORLD_HEIGHT, 1);
+            if (avatarBaseHeight) {
+                avatarSprite.position.y = avatarBaseHeight + AVATAR_WORLD_HEIGHT / 2;
+            }
+            updateAvatarShadow();
+        }
+
+        function updateAvatarShadow() {
+            if (!avatarShadow || !avatarSprite) return;
+            avatarShadow.position.y = -(avatarSprite.scale.y / 2) + 0.05;
+            const shadowScale = Math.max(0.8, avatarSprite.scale.x * 0.35);
+            avatarShadow.scale.set(shadowScale, shadowScale, 1);
+        }
+
+        function clampTimeOfDayValue(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return runtimeSettings.timeOfDay;
+            return Math.min(24, Math.max(0, numeric));
+        }
+
+        function clampInRange(value, [min, max], fallback) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return fallback;
+            return Math.min(max, Math.max(min, numeric));
+        }
+
+        function clampFovValue(value) {
+            return clampInRange(value, CAMERA_FOV_RANGE, runtimeSettings.cameraFov);
+        }
+
+        function clampMouseSensitivity(value) {
+            return clampInRange(value, MOUSE_SENSITIVITY_RANGE, runtimeSettings.mouseSensitivity);
+        }
+
+        function clampRenderScale(value) {
+            return clampInRange(value, RENDER_SCALE_RANGE, runtimeSettings.renderScale);
+        }
+
+        function clampRainIntensity(value) {
+            return clampInRange(value, RAIN_INTENSITY_RANGE, runtimeSettings.rainIntensity);
+        }
+
+        function clampFogDensity(value) {
+            return clampInRange(value, FOG_DENSITY_RANGE, runtimeSettings.fogDensity);
+        }
+
+        function clampCloudDensity(value) {
+            return clampInRange(value, CLOUD_DENSITY_RANGE, runtimeSettings.cloudDensity);
+        }
+
+        function clampCloudSpeed(value) {
+            return clampInRange(value, CLOUD_SPEED_RANGE, runtimeSettings.cloudSpeed);
+        }
+
+        function normalizeWeatherValue(value) {
+            if (typeof value !== 'string') return runtimeSettings.weather;
+            const normalized = value.toLowerCase();
+            return WEATHER_PRESETS.includes(normalized) ? normalized : runtimeSettings.weather;
+        }
+
+        function setRuntimeWeather(value) {
+            const normalized = normalizeWeatherValue(value);
+            const changed = runtimeSettings.weather !== normalized;
+            runtimeSettings.weather = normalized;
+            if (normalized === 'rainy') {
+                rainDurationTimer = 0;
+            }
+            return changed;
+        }
+
+        function sampleTimeProfile(hours) {
+            const wrapped = ((Number(hours) % 24) + 24) % 24;
+            let start = TIME_KEYFRAMES[0];
+            let end = TIME_KEYFRAMES[TIME_KEYFRAMES.length - 1];
+            for (let i = 0; i < TIME_KEYFRAMES.length - 1; i++) {
+                const current = TIME_KEYFRAMES[i];
+                const next = TIME_KEYFRAMES[i + 1];
+                if (wrapped >= current.hour && wrapped <= next.hour) {
+                    start = current;
+                    end = next;
+                    break;
+                }
+            }
+            const span = Math.max(0.0001, end.hour - start.hour);
+            const t = (wrapped - start.hour) / span;
+            const lerpColor = (a, b) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+            const lerp = (a, b) => THREE.MathUtils.lerp(a, b, t);
+            return {
+                skyColor: lerpColor(start.skyColor, end.skyColor),
+                fogColor: lerpColor(start.fogColor, end.fogColor),
+                fogDensity: lerp(start.fogDensity, end.fogDensity),
+                ambientSky: lerpColor(start.ambientSky, end.ambientSky),
+                ambientGround: lerpColor(start.ambientGround, end.ambientGround),
+                ambientIntensity: lerp(start.ambientIntensity, end.ambientIntensity),
+                sunColor: lerpColor(start.sunColor, end.sunColor),
+                sunIntensity: lerp(start.sunIntensity, end.sunIntensity),
+                exposure: lerp(start.exposure, end.exposure),
+            };
+        }
+
+        function applyWeatherAdjustments(profile) {
+            const sunriseSoftening = getSunriseHazeFactor(runtimeSettings.timeOfDay);
+            if (sunriseSoftening > 0) {
+                const fogScale = THREE.MathUtils.lerp(1, 1.8, sunriseSoftening);
+                profile.fogDensity *= fogScale;
+                profile.skyColor.lerp(new THREE.Color(0xffd7b3), 0.15 * sunriseSoftening);
+                profile.ambientIntensity *= THREE.MathUtils.lerp(1, 0.82, sunriseSoftening);
+                profile.sunIntensity *= THREE.MathUtils.lerp(1, 0.65, sunriseSoftening);
+                profile.exposure *= THREE.MathUtils.lerp(1, 0.72, sunriseSoftening);
+            }
+
+            switch (runtimeSettings.weather) {
+                case 'foggy':
+                    profile.fogDensity *= 2.2;
+                    profile.fogColor.lerp(new THREE.Color(0xdfefff), 0.4);
+                    profile.exposure *= 0.95;
+                break;
+                case 'rainy':
+                    profile.fogDensity *= 1.5;
+                    profile.skyColor.lerp(new THREE.Color(0x5b6a82), 0.6);
+                    profile.fogColor.lerp(new THREE.Color(0x7a8da6), 0.4);
+                    profile.sunIntensity *= 0.6;
+                    profile.ambientIntensity *= 0.85;
+                    profile.exposure *= 0.85;
+                    break;
+                default:
+                    break;
+            }
+            profile.fogDensity *= clampFogDensity(runtimeSettings.fogDensity);
+            return profile;
+        }
+
+        function getSunriseHazeFactor(hours) {
+            const normalized = ((Number(hours) % 24) + 24) % 24;
+            const distance = Math.abs((((normalized - 6) % 24) + 24 + 12) % 24 - 12); // Wrapped distance from 6:00
+            const falloff = 1.5;
+            return THREE.MathUtils.clamp(1 - distance / falloff, 0, 1);
+        }
+
+        function getNightFactor(hours) {
+            const normalized = ((Number(hours) % 24) + 24) % 24;
+            const angle = normalized / 24 * Math.PI * 2;
+            return Math.pow(Math.max(0, Math.cos(angle)), 1.6);
+        }
+
+        function updateSkyboxFromProfile(profile) {
+            if (!skyUniforms) return;
+            const topColor = profile.skyColor.clone();
+            const bottomColor = profile.skyColor.clone().lerp(profile.fogColor, 0.5);
+            skyUniforms.topColor.value.copy(topColor);
+            skyUniforms.bottomColor.value.copy(bottomColor);
+            const nightFactor = getNightFactor(runtimeSettings.timeOfDay);
+            skyUniforms.nightMix.value = nightFactor;
+
+            updateNightSkyVisibility(nightFactor);
+
+            // Smoothly fade deep space elements based on night factor
+            // We use cubic easing for a nicer transition
+            const visibility = THREE.MathUtils.smoothstep(nightFactor, 0.05, 0.65);
+
+            if (deepSpaceGroup) {
+                deepSpaceGroup.visible = visibility > 0.01;
+                // We manually set opacity of children to allow fading
+                deepSpaceGroup.children.forEach(child => {
+                    const material = child.material;
+                    if (!material) return;
+
+                    const baseOpacity = child.userData?.baseOpacity ?? 1.0;
+
+                    if (material.uniforms?.globalOpacity) {
+                        material.uniforms.globalOpacity.value = baseOpacity * visibility;
+                    } else if (material.opacity !== undefined) {
+                        material.opacity = baseOpacity * visibility;
+                    }
+                });
+            }
+        }
+
+        function updateCloudLayerFromProfile(profile) {
+            if (!cloudLayer || !cloudUniforms) return;
+
+            const enabled = Boolean(runtimeSettings.cloudsEnabled);
+            cloudLayer.visible = enabled;
+            if (!enabled) return;
+
+            const nightFactor = getNightFactor(runtimeSettings.timeOfDay);
+            const density = clampCloudDensity(runtimeSettings.cloudDensity);
+            const speed = clampCloudSpeed(runtimeSettings.cloudSpeed);
+            const weatherDensityScale = runtimeSettings.weather === 'rainy' ? 1.6 : (runtimeSettings.weather === 'foggy' ? 0.9 : 1.0);
+            const weatherSpeedScale = runtimeSettings.weather === 'foggy' ? 0.75 : 1.0;
+
+            cloudUniforms.density.value = density * weatherDensityScale;
+            cloudUniforms.speed.value = speed * weatherSpeedScale;
+
+            const tint = profile.skyColor.clone().lerp(profile.sunColor, 0.25 * nightFactor);
+            const brightness = THREE.MathUtils.lerp(0.4, 0.8, nightFactor);
+            cloudUniforms.baseColor.value.copy(tint).multiplyScalar(brightness);
+            cloudUniforms.baseColor.value.r = Math.min(1, Math.max(0, cloudUniforms.baseColor.value.r));
+            cloudUniforms.baseColor.value.g = Math.min(1, Math.max(0, cloudUniforms.baseColor.value.g));
+            cloudUniforms.baseColor.value.b = Math.min(1, Math.max(0, cloudUniforms.baseColor.value.b));
+
+            const baseOpacity = THREE.MathUtils.lerp(0.2, 0.5, nightFactor);
+            const rainOpacityBoost = runtimeSettings.weather === 'rainy' ? 1.2 : 1.0;
+            cloudUniforms.opacity.value = baseOpacity * rainOpacityBoost;
+        }
+
+        function updateCelestialBodies(profile) {
+            const angle = (runtimeSettings.timeOfDay % 24) / 24 * Math.PI * 2;
+            const sunElevation = -Math.cos(angle);
+            const sunHoriz = Math.sqrt(Math.max(0.0001, 1 - sunElevation * sunElevation));
+            celestialState.sunDirection.set(
+                Math.cos(angle) * sunHoriz,
+                sunElevation,
+                Math.sin(angle) * sunHoriz
+            ).normalize();
+
+            const moonAngle = angle + Math.PI;
+            const moonElevation = -Math.cos(moonAngle);
+            const moonHoriz = Math.sqrt(Math.max(0.0001, 1 - moonElevation * moonElevation));
+            celestialState.moonDirection.set(
+                Math.cos(moonAngle) * moonHoriz,
+                moonElevation,
+                Math.sin(moonAngle) * moonHoriz
+            ).normalize();
+
+            celestialState.sunVisibility = Math.max(0, sunElevation);
+            celestialState.moonVisibility = Math.max(0, moonElevation);
+
+            if (sunSprite) {
+                const sunVisible = runtimeSettings.weather !== 'rainy';
+                sunSprite.visible = sunVisible && celestialState.sunVisibility > 0.01;
+                sunSprite.material.opacity = sunVisible ? THREE.MathUtils.lerp(0.1, 0.95, celestialState.sunVisibility) : 0.0;
+                sunSprite.material.color.copy(profile.sunColor);
+            }
+
+            if (moonSprite) {
+                const moonTint = new THREE.Color(0xeaf0ff).lerp(profile.skyColor, 0.08);
+                moonSprite.material.opacity = THREE.MathUtils.lerp(0.0, 0.85, celestialState.moonVisibility);
+                moonSprite.material.color.copy(moonTint);
+            }
+        }
+
+        function updateNightSkyVisibility(nightFactor) {
+            const starVisibility = THREE.MathUtils.lerp(0.05, 1.0, nightFactor);
+            if (starField?.material?.uniforms?.globalOpacity) {
+                starField.material.uniforms.globalOpacity.value = starField.userData.baseOpacity * starVisibility;
+            }
+
+            if (starDustField?.material?.uniforms?.globalOpacity) {
+                const dustVisibility = THREE.MathUtils.lerp(0.08, 1.2, nightFactor);
+                starDustField.material.uniforms.globalOpacity.value = starDustField.userData.baseOpacity * dustVisibility;
+            }
+
+            if (nebulaCloud?.material) {
+                nebulaCloud.material.opacity = THREE.MathUtils.lerp(0.05, nebulaCloud.userData.baseOpacity, nightFactor);
+            }
+
+            if (galaxySystem?.material) {
+                galaxySystem.material.opacity = THREE.MathUtils.lerp(0.05, 1.0, nightFactor);
+            }
+
+            galaxySprites.forEach(sprite => {
+                if (sprite.material) {
+                    sprite.material.opacity = THREE.MathUtils.lerp(0.03, sprite.userData.baseOpacity || 0.6, nightFactor);
+                }
+            });
+        }
+
+        function updateDirectionalLightTransform() {
+            if (!camera) return;
+
+            const anchor = camera.position;
+
+            if (dirLight) {
+                sunLightOffset.copy(celestialState.sunDirection).multiplyScalar(SUN_LIGHT_DISTANCE).add(anchor);
+                dirLight.position.copy(sunLightOffset);
+                dirLight.target.position.copy(anchor);
+                dirLight.target.updateMatrixWorld();
+                dirLight.shadow.camera.updateProjectionMatrix();
+            }
+
+            if (moonLight) {
+                moonLightOffset.copy(celestialState.moonDirection).multiplyScalar(SUN_LIGHT_DISTANCE * 0.8).add(anchor);
+                moonLight.position.copy(moonLightOffset);
+                moonLight.target.position.copy(anchor);
+                moonLight.target.updateMatrixWorld();
+            }
+        }
+
+        function updateEnvironmentFromSettings() {
+            if (!scene) return;
+            const nightFactor = getNightFactor(runtimeSettings.timeOfDay);
+            const profile = applyWeatherAdjustments(sampleTimeProfile(runtimeSettings.timeOfDay));
+            if (nightFactor > 0) {
+                profile.fogDensity = 0;
+                profile.fogColor.copy(profile.skyColor);
+            }
+            if (scene.background) scene.background.copy(profile.skyColor);
+            updateSkyboxFromProfile(profile);
+            updateCelestialBodies(profile);
+            if (scene.fog) {
+                // Enhance fog for rain
+                if (runtimeSettings.weather === 'rainy') {
+                    scene.fog.color.copy(profile.fogColor).multiplyScalar(0.7); // Darker fog
+                    scene.fog.density = Math.max(profile.fogDensity, 0.04); // Min density for rain
+                } else {
+                    scene.fog.color.copy(profile.fogColor);
+                    scene.fog.density = profile.fogDensity;
+                }
+            }
+            if (ambientLight) {
+                ambientLight.color.copy(profile.ambientSky);
+                ambientLight.groundColor.copy(profile.ambientGround);
+                ambientLight.intensity = profile.ambientIntensity;
+            }
+            if (dirLight) {
+                dirLight.color.copy(profile.sunColor);
+                dirLight.intensity = profile.sunIntensity;
+            }
+            if (moonLight) {
+                const moonVisibility = celestialState.moonVisibility;
+                const active = isNightTime(runtimeSettings.timeOfDay);
+                const intensity = active ? THREE.MathUtils.lerp(0.08, 0.35, moonVisibility) : 0;
+                moonLight.color.set(0xaec6ff);
+                moonLight.intensity = intensity;
+                moonLight.visible = intensity > 0.01;
+            }
+            updateDirectionalLightTransform();
+            if (renderer) {
+                renderer.toneMappingExposure = profile.exposure;
+            }
+            updateCloudLayerFromProfile(profile);
+            updateWeatherSystems();
+        }
+
+        function updateRendererSettings() {
+            if (camera) {
+                camera.fov = clampFovValue(runtimeSettings.cameraFov);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            }
+            if (renderer) {
+                const pixelRatio = Math.max(0.1, window.devicePixelRatio * clampRenderScale(runtimeSettings.renderScale));
+                renderer.setPixelRatio(pixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.shadowMap.enabled = Boolean(runtimeSettings.shadowsEnabled);
+            }
+            if (dirLight) {
+                dirLight.castShadow = Boolean(runtimeSettings.shadowsEnabled);
+            }
+        }
+
+        function updateCelestialSpritePositions() {
+            if (!camera) return;
+            if (sunSprite) {
+                sunSprite.visible = runtimeSettings.weather !== 'rainy' && celestialState.sunVisibility > 0.01;
+                if (sunSprite.visible) {
+                    celestialOffset.copy(celestialState.sunDirection).multiplyScalar(CELESTIAL_DISTANCE);
+                    sunSprite.position.copy(camera.position).add(celestialOffset);
+                }
+            }
+
+            if (moonSprite) {
+                moonSprite.visible = celestialState.moonVisibility > 0.01;
+                if (moonSprite.visible) {
+                    celestialOffset.copy(celestialState.moonDirection).multiplyScalar(CELESTIAL_DISTANCE);
+                    moonSprite.position.copy(camera.position).add(celestialOffset);
+                }
+            }
+        }
+
+        function updateWeatherSystems() {
+            const showFireflies = runtimeSettings.weather !== 'rainy';
+            firefliesData.forEach((sys) => {
+                if (sys?.mesh) sys.mesh.visible = showFireflies;
+            });
+
+            const isNight = isNightTime();
+
+            if (runtimeSettings.weather === 'rainy') {
+                const sys = rainSystem ?? createRainSystem();
+                if (sys?.mesh) {
+                    const active = Math.max(0, Math.floor(sys.maxCount * clampRainIntensity(runtimeSettings.rainIntensity)));
+                    sys.activeCount = active;
+                    // Draw range for lines is 2 * active
+                    sys.mesh.geometry.setDrawRange(0, active * 2);
+                    sys.mesh.visible = active > 0;
+                }
+                // Enable splashes if rain is active
+                if (splashSystem?.mesh) {
+                    splashSystem.mesh.visible = (sys?.mesh?.visible === true);
+                }
+            } else {
+                if (rainSystem?.mesh) rainSystem.mesh.visible = false;
+                if (splashSystem?.mesh) splashSystem.mesh.visible = false;
+            }
+
+            if (!isNight && runtimeSettings.weather === 'foggy') {
+                const sys = fogSystem ?? createFogSystem();
+                if (sys?.mesh) {
+                    const active = Math.max(0, Math.floor(sys.maxCount * clampFogDensity(runtimeSettings.fogDensity)));
+                    sys.activeCount = active;
+                    sys.mesh.geometry.setDrawRange(0, active);
+                    sys.mesh.visible = active > 0;
+                }
+            } else if (fogSystem?.mesh) {
+                fogSystem.mesh.visible = false;
+            }
+        }
+
+        function createRainSystem() {
+            if (!scene) return null;
+            const count = 10000; // Significantly increased count
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 2 * 3); // 2 vertices per drop
+            const speeds = new Float32Array(count);
+
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * 80;
+                const z = (Math.random() - 0.5) * 80;
+                const y = Math.random() * 20 + 5;
+                const speed = 15 + Math.random() * 10;
+
+                // Head
+                positions[i * 6] = x;
+                positions[i * 6 + 1] = y;
+                positions[i * 6 + 2] = z;
+
+                // Tail (longer streaks)
+                positions[i * 6 + 3] = x;
+                positions[i * 6 + 4] = y + 0.8; // Increased streak length
+                positions[i * 6 + 5] = z;
+
+                speeds[i] = speed;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    color: { value: new THREE.Color(0xaad4ff) },
+                    opacity: { value: 0.8 } // Increased opacity
+                },
+                transparent: true,
+                depthWrite: false,
+                vertexShader: `
+                    uniform float opacity;
+                    varying float vOpacity;
+                    void main() {
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        float dist = length(mvPosition.xyz);
+                        // Fade out based on distance
+                        vOpacity = opacity * (1.0 - smoothstep(5.0, 40.0, dist));
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 color;
+                    varying float vOpacity;
+                    void main() {
+                        if (vOpacity < 0.01) discard;
+                        gl_FragColor = vec4(color, vOpacity);
+                    }
+                `
+            });
+
+            const mesh = new THREE.LineSegments(geometry, material);
+            mesh.visible = false;
+            mesh.frustumCulled = false;
+            scene.add(mesh);
+
+            rainSystem = { mesh, speeds, maxCount: count, activeCount: count };
+            createSplashSystem(); // Initialize splashes
+            return rainSystem;
+        }
+
+        function createSplashSystem() {
+            if (splashSystem) return splashSystem;
+            const count = 1000;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const times = new Float32Array(count); // Time alive
+
+            // Initialize off-screen
+            for (let i = 0; i < count; i++) {
+                positions[i * 3 + 1] = -1000;
+                times[i] = 100; // Inactive
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('time', new THREE.BufferAttribute(times, 1));
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    color: { value: new THREE.Color(0xcceeff) }
+                },
+                transparent: true,
+                depthWrite: false,
+                vertexShader: `
+                    attribute float time;
+                    varying float vAlpha;
+                    void main() {
+                        vec3 pos = position;
+                        // Animate splash: expand and rise slightly
+                        float t = clamp(time, 0.0, 1.0);
+                        pos.y += t * 0.2;
+
+                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                        gl_Position = projectionMatrix * mvPosition;
+                        gl_PointSize = (1.0 - t) * 50.0 / -mvPosition.z;
+                        vAlpha = 1.0 - t;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 color;
+                    varying float vAlpha;
+                    void main() {
+                        if (vAlpha < 0.01) discard;
+                        vec2 coord = gl_PointCoord - vec2(0.5);
+                        float dist = length(coord);
+                        if (dist > 0.5) discard;
+                        gl_FragColor = vec4(color, vAlpha * 0.6);
+                    }
+                `
+            });
+
+            const points = new THREE.Points(geometry, material);
+            points.visible = false;
+            points.frustumCulled = false;
+            scene.add(points);
+            splashSystem = { mesh: points, maxCount: count, nextIdx: 0 };
+            return splashSystem;
+        }
+
+        function createFogSystem() {
+            if (!scene) return null;
+            const count = 400;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const offsets = [];
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * 80;
+                const z = (Math.random() - 0.5) * 80;
+                const y = Math.random() * 2 + 0.5;
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+                offsets.push({
+                    baseX: x,
+                    baseY: y,
+                    baseZ: z,
+                    radius: 1 + Math.random() * 2,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0xdfefff,
+                size: 0.9,
+                transparent: true,
+                opacity: 0.2,
+                depthWrite: false,
+            });
+            const particles = new THREE.Points(geometry, material);
+            particles.visible = false;
+            particles.frustumCulled = false;
+            geometry.setDrawRange(0, count);
+            scene.add(particles);
+            fogSystem = { mesh: particles, offsets, maxCount: count, activeCount: count };
+            return fogSystem;
+        }
+
+        function spawnSplash(x, z) {
+            if (!splashSystem || !splashSystem.mesh) return;
+            const idx = splashSystem.nextIdx;
+            const positions = splashSystem.mesh.geometry.attributes.position;
+            const times = splashSystem.mesh.geometry.attributes.time;
+
+            positions.setXYZ(idx, x, 0.1, z);
+            times.setX(idx, 0); // Reset time
+
+            positions.needsUpdate = true;
+            times.needsUpdate = true;
+
+            splashSystem.nextIdx = (splashSystem.nextIdx + 1) % splashSystem.maxCount;
+        }
+
+        function updateWeatherParticles(delta) {
+            // Update Rain
+            if (rainSystem?.mesh?.visible) {
+                const positions = rainSystem.mesh.geometry.attributes.position;
+                const active = Math.min(rainSystem.activeCount ?? rainSystem.maxCount, rainSystem.maxCount);
+
+                for (let i = 0; i < active; i++) {
+                    // Each drop has 2 vertices: 2*i (head) and 2*i+1 (tail)
+                    // BufferAttribute methods use vertex index, not float array index
+                    const headIdx = 2 * i;
+                    const tailIdx = 2 * i + 1;
+
+                    let yHead = positions.getY(headIdx);
+                    const speed = rainSystem.speeds[i];
+                    const move = speed * delta;
+
+                    yHead -= move;
+
+                    if (yHead < 0) {
+                        // Hit ground
+                        if (Math.random() > 0.7) spawnSplash(positions.getX(headIdx), positions.getZ(headIdx));
+
+                        // Reset
+                        yHead = 20 + Math.random() * 5;
+                        const newX = (Math.random() - 0.5) * 80;
+                        const newZ = (Math.random() - 0.5) * 80;
+
+                        positions.setXYZ(headIdx, newX, yHead, newZ);
+                        positions.setXYZ(tailIdx, newX, yHead + 0.8, newZ);
+                    } else {
+                        positions.setY(headIdx, yHead);
+                        positions.setY(tailIdx, yHead + 0.8); // Maintain streak length
+                    }
+                }
+                positions.needsUpdate = true;
+            }
+
+            // Update Splashes
+            if (splashSystem?.mesh?.visible) {
+                const times = splashSystem.mesh.geometry.attributes.time;
+                for (let i = 0; i < splashSystem.maxCount; i++) {
+                    let t = times.getX(i);
+                    if (t < 1.0) {
+                        t += delta * 4.0; // Animation speed
+                        times.setX(i, t);
+                    }
+                }
+                times.needsUpdate = true;
+            }
+
+            if (fogSystem?.mesh?.visible) {
+                const positions = fogSystem.mesh.geometry.attributes.position;
+                const active = Math.min(fogSystem.activeCount ?? positions.count, positions.count);
+                for (let i = 0; i < active; i++) {
+                    const data = fogSystem.offsets[i];
+                    const drift = state.globalTime * 0.1;
+                    positions.setX(i, data.baseX + Math.sin(drift + data.phase) * data.radius);
+                    positions.setZ(i, data.baseZ + Math.cos(drift + data.phase) * data.radius);
+                    positions.setY(i, data.baseY + Math.sin(state.globalTime * 0.3 + data.phase) * 0.4);
+                }
+                positions.needsUpdate = true;
+            }
+        }
+
+        function parseSettingsFromQuery() {
+            const p = new URLSearchParams(window.location.search);
+            applySettings({
+                movementSpeed: Number(p.get('moveSpeed')) || 1,
+                invertLook: p.get('invertLook') === 'true',
+                showInstructions: p.get('showInstructions') === 'true',
+                timeOfDay: Number(p.get('timeOfDay')),
+                weather: p.get('weather'),
+                cameraFov: Number(p.get('fov')),
+                mouseSensitivity: Number(p.get('mouseSensitivity')),
+                shadowsEnabled: p.get('shadowsEnabled') === 'true',
+                renderScale: Number(p.get('renderScale')),
+                showChatBubbles: p.get('showChatBubbles') === 'true',
+                rainIntensity: Number(p.get('rainIntensity')),
+                fogDensity: Number(p.get('fogDensity')),
+                cloudsEnabled: p.get('cloudsEnabled') === 'true',
+                cloudDensity: Number(p.get('cloudDensity')),
+                cloudSpeed: Number(p.get('cloudSpeed')),
+            });
+        }
+
+        function applySettings(s) {
+            runtimeSettings.movementSpeed = Math.max(0.1, Number(s.movementSpeed ?? 1));
+            runtimeSettings.invertLook = Boolean(s.invertLook ?? false);
+            runtimeSettings.showInstructions = Boolean(s.showInstructions ?? true);
+            runtimeSettings.timeOfDay = clampTimeOfDayValue(s.timeOfDay);
+            setRuntimeWeather(s.weather);
+            runtimeSettings.cameraFov = clampFovValue(s.cameraFov ?? runtimeSettings.cameraFov);
+            runtimeSettings.mouseSensitivity = clampMouseSensitivity(s.mouseSensitivity ?? runtimeSettings.mouseSensitivity);
+            runtimeSettings.shadowsEnabled = Boolean(s.shadowsEnabled ?? runtimeSettings.shadowsEnabled);
+            runtimeSettings.renderScale = clampRenderScale(s.renderScale ?? runtimeSettings.renderScale);
+            runtimeSettings.showChatBubbles = Boolean(s.showChatBubbles ?? runtimeSettings.showChatBubbles);
+            runtimeSettings.rainIntensity = clampRainIntensity(s.rainIntensity ?? runtimeSettings.rainIntensity);
+            runtimeSettings.fogDensity = clampFogDensity(s.fogDensity ?? runtimeSettings.fogDensity);
+            runtimeSettings.cloudsEnabled = Boolean(s.cloudsEnabled ?? runtimeSettings.cloudsEnabled);
+            runtimeSettings.cloudDensity = clampCloudDensity(s.cloudDensity ?? runtimeSettings.cloudDensity);
+            runtimeSettings.cloudSpeed = clampCloudSpeed(s.cloudSpeed ?? runtimeSettings.cloudSpeed);
+            updateInstructionsVisibility();
+            updateEnvironmentFromSettings();
+            updateRendererSettings();
+            renderChatBubble();
+            updateStatusHud(true);
+        }
+
+        function isNightTime(hours = runtimeSettings.timeOfDay) {
+            const normalized = ((Number(hours) % 24) + 24) % 24;
+            const angle = normalized / 24 * Math.PI * 2;
+            return Math.cos(angle) >= 0;
+        }
+
+        function setupStatusHud() {
+            hudTimeValue = document.getElementById('hud_time_value');
+            hudWeatherValue = document.getElementById('hud_weather_value');
+            hudLocationValue = document.getElementById('hud_location_value');
+            updateStatusHud(true);
+        }
+
+        function updateStatusHud(force = false, delta = 0) {
+            hudUpdateTimer += delta;
+            if (!force && hudUpdateTimer < 0.25) return;
+            hudUpdateTimer = 0;
+
+            if (hudTimeValue) hudTimeValue.textContent = formatTimeOfDayLabel(runtimeSettings.timeOfDay);
+            if (hudWeatherValue) hudWeatherValue.textContent = runtimeSettings.weather;
+            if (hudLocationValue && camera) hudLocationValue.textContent = getApproximateLocation(camera.position);
+        }
+
+        function advanceTimeOfDay(delta) {
+            if (!Number.isFinite(delta) || delta <= 0) return false;
+            const hoursPerSecond = isNightTime(runtimeSettings.timeOfDay) ? NIGHT_HOURS_PER_SECOND : DAY_HOURS_PER_SECOND;
+            runtimeSettings.timeOfDay = (runtimeSettings.timeOfDay + delta * hoursPerSecond) % 24;
+            return true;
+        }
+
+        function updateDynamicWeather(delta) {
+            if (!Number.isFinite(delta) || delta <= 0) return false;
+
+            if (runtimeSettings.weather === 'rainy') {
+                rainDurationTimer += delta;
+                if (rainDurationTimer >= RAIN_DURATION_SECONDS) {
+                    setRuntimeWeather('clear');
+                    weatherRollTimer = 0;
+                    return true;
+                }
+                return false;
+            }
+
+            weatherRollTimer += delta;
+            if (weatherRollTimer >= WEATHER_ROLL_INTERVAL) {
+                weatherRollTimer = 0;
+                if (Math.random() < RANDOM_RAIN_CHANCE) {
+                    setRuntimeWeather('rainy');
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        function handleIncomingMessage(e) {
+            if (e.data?.source !== 'world-engine') return;
+            if (e.data.type === 'world-engine-settings') applySettings(e.data.payload);
+            if (e.data.type === 'world-engine-chat') {
+                const payload = e.data.payload || {};
+                if (Array.isArray(payload?.history)) {
+                    replaceChatHistory(payload.history);
+                } else if (payload?.direction !== 'outgoing') {
+                    const textOverride = typeof payload.textOverride === 'string' ? payload.textOverride : null;
+                    const incomingText = textOverride ?? payload.text ?? '';
+                    const typing = Boolean(payload.typing);
+
+                    if (typing && !incomingText.trim()) {
+                        state.isTyping = true;
+                        recordChatMessage(payload.role || 'assistant', TYPING_INDICATOR_TEXT, payload.name, payload.avatar, true, true);
+                        return;
+                    }
+
+                    clearTypingIndicator(payload.role);
+                    if (!incomingText.trim()) return;
+                    recordChatMessage(payload.role || 'assistant', incomingText, payload.name, payload.avatar, payload.overwrite, typing);
+                }
+            }
+            if (e.data.type === 'get-world-state') {
+                const state = getWorldState();
+                window.parent?.postMessage({ source: 'world-engine', type: 'world-engine-state', payload: state }, '*');
+            }
+            if (e.data.type === 'world-engine-command') {
+                handleCommand(e.data.payload);
+            }
+        }
+
+        function getWorldState() {
+            const pos = camera.position;
+            const time = formatTimeOfDayLabel(runtimeSettings.timeOfDay);
+            const weather = runtimeSettings.weather;
+            const location = getApproximateLocation(pos);
+            return {
+                time,
+                weather,
+                position: { x: pos.x.toFixed(1), y: pos.y.toFixed(1), z: pos.z.toFixed(1) },
+                locationDescription: location
+            };
+        }
+
+        function getApproximateLocation(pos) {
+            const bridgeSurface = getBridgeSurface(pos.x, pos.z);
+            const atBridgeHeight = bridgeSurface && Math.abs((pos.y - PLAYER_EYE_HEIGHT) - bridgeSurface.height) < BRIDGE_STEP_TOLERANCE;
+            if (atBridgeHeight) {
+                return bridgeSurface.closestZ >= 0 ? "On the northern bridge" : "On the southern bridge";
+            }
+
+            if (pos.y > 15) return "High in the air";
+            if (Math.abs(pos.x) < 10 && Math.abs(pos.z) < 10) return "Near the center clearing";
+            if (pos.z > 20) return "In the northern forest";
+            if (pos.z < -20) return "In the southern forest";
+            if (pos.x > 20) return "In the eastern woods";
+            if (pos.x < -20) return "Near the western tower";
+            return "In the wilderness";
+        }
+
+        function handleCommand(payload) {
+            if (!payload || !payload.command) return;
+            const cmd = payload.command.toLowerCase();
+            const args = payload.args || [];
+
+            console.log("[World Engine] Executing command:", cmd, args);
+
+            if (cmd === 'weather') {
+                const weather = args[0];
+                if (['clear', 'rainy', 'foggy'].includes(weather)) {
+                    applySettings({ weather });
+                }
+            } else if (cmd === 'time') {
+                const time = parseFloat(args[0]);
+                if (!isNaN(time)) {
+                    applySettings({ timeOfDay: time });
+                }
+            }
+        }
+
+        function formatTimeOfDayLabel(value) {
+            const clamped = clampTimeOfDayValue(value);
+            const normalized = clamped >= 24 ? 0 : clamped;
+            let hours = Math.floor(normalized);
+            let minutes = Math.round((normalized - hours) * 60);
+            if (minutes === 60) {
+                minutes = 0;
+                hours = (hours + 1) % 24;
+            }
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+
+        function replaceChatHistory(entries = []) {
+            state.isTyping = false;
+            state.chatHistory = (Array.isArray(entries) ? entries : []).map(e => ({
+                role: normalizeRole(e?.role),
+                text: String(e?.text || '').trim(),
+                name: e?.name,
+                avatar: e?.avatar,
+                isTyping: false,
+            })).filter(e => e.text).slice(-CHAT_HISTORY_LIMIT);
+            renderChatBubble();
+        }
+
+        function clearTypingIndicator(role = 'assistant') {
+            const normalizedRole = normalizeRole(role);
+            const last = state.chatHistory[state.chatHistory.length - 1];
+            if (last?.isTyping && last.role === normalizedRole) {
+                state.chatHistory.pop();
+                renderChatBubble();
+            }
+            state.isTyping = false;
+        }
+
+        function setupPointerLock(target) {
+            const req = () => target.requestPointerLock?.();
+            document.getElementById('instructions')?.addEventListener('click', req);
+            target.addEventListener('click', req);
+            document.addEventListener('pointerlockchange', () => { state.isLocked = document.pointerLockElement === target; updateInstructionsVisibility(); });
+            document.addEventListener('mousemove', (e) => {
+                if (!state.isLocked) return;
+                const sensitivity = BASE_MOUSE_SENSITIVITY * clampMouseSensitivity(runtimeSettings.mouseSensitivity);
+                state.yaw -= e.movementX * sensitivity;
+                state.pitch -= e.movementY * sensitivity * (runtimeSettings.invertLook ? -1 : 1);
+                state.pitch = Math.max(-1.5, Math.min(1.5, state.pitch));
+                camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
+            });
+        }
+
+        function setupChatUi() {
+            chatInput = document.getElementById('chat_input');
+            chatForm = document.getElementById('chat_form');
+            chatForm?.addEventListener('submit', (e) => {
+                e.preventDefault(); const text = chatInput?.value?.trim();
+                if (text) { dispatchChatMessage(text); chatInput.value = ''; chatInput.blur(); }
+            });
+            chatInput?.addEventListener('focus', () => { state.isChatFocused = true; if (document.pointerLockElement) document.exitPointerLock(); });
+            chatInput?.addEventListener('blur', () => state.isChatFocused = false);
+            renderChatBubble();
+        }
+
+        function setupEvents() {
+            window.addEventListener('resize', () => { updateRendererSettings(); });
+            document.addEventListener('keydown', e => handleKey(e, true));
+            document.addEventListener('keyup', e => handleKey(e, false));
+            document.addEventListener('mousedown', handleMouseInteraction);
+        }
+
+        function handleMouseInteraction(e) {
+            if (!camera || !avatarSprite) return;
+
+            // Determine raycaster origin based on pointer lock state
+            const mouse = new THREE.Vector2();
+            if (document.pointerLockElement === document.body) {
+                // Locked: use center of screen
+                mouse.x = 0;
+                mouse.y = 0;
+            } else {
+                // Unlocked: use mouse coordinates
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            }
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObject(avatarSprite);
+            if (intersects.length > 0) {
+                // Avatar clicked
+                console.log("[World Engine] Avatar clicked");
+                window.parent?.postMessage({
+                    source: 'world-engine',
+                    type: 'world-engine-interaction',
+                    payload: { target: 'avatar', action: 'click' }
+                }, '*');
+            }
+        }
+
+        function handleKey(e, pressed) {
+            if (state.isChatFocused) {
+                if (e.code === 'Enter' && pressed) chatInput.focus();
+                if (e.code === 'Escape' && pressed) chatInput.blur();
+                return;
+            }
+            switch (e.code) {
+                case 'ArrowUp': case 'KeyW': state.moveForward = pressed; break;
+                case 'ArrowLeft': case 'KeyA': state.moveLeft = pressed; break;
+                case 'ArrowDown': case 'KeyS': state.moveBackward = pressed; break;
+                case 'ArrowRight': case 'KeyD': state.moveRight = pressed; break;
+                case 'Space': state.jump = pressed; break;
+            }
+        }
+
+        function dispatchChatMessage(text) {
+            recordChatMessage('user', text);
+            window.parent?.postMessage({ source: 'world-engine', type: 'world-engine-chat', payload: { text, role: 'user', direction: 'outgoing' } }, '*');
+        }
+
+        function updateInstructionsVisibility() {
+            const el = document.getElementById('instructions');
+            if (el) el.style.display = (runtimeSettings.showInstructions && !state.isLocked) ? 'block' : 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now(), delta = Math.min((time - state.lastTime) / 1000, 0.1);
+            state.lastTime = time; state.globalTime += delta;
+
+            const timeAdvanced = advanceTimeOfDay(delta);
+            const weatherChanged = updateDynamicWeather(delta);
+
+            if (starField?.material?.uniforms?.time) {
+                starField.material.uniforms.time.value = state.globalTime;
+            }
+
+            if (cloudUniforms) {
+                cloudUniforms.time.value = state.globalTime;
+            }
+
+            const water = scene.getObjectByName("water");
+            if (water && waterVertices.length) {
+                const posAttr = water.geometry.attributes.position;
+                for (let i = 0; i < posAttr.count; i++) {
+                    const v = waterVertices[i];
+                    const z = v.z + Math.sin(state.globalTime * 1.5 + v.ang) * v.amp;
+                    posAttr.setZ(i, z);
+                }
+                posAttr.needsUpdate = true;
+            }
+
+            firefliesData.forEach(sys => {
+                const positions = sys.mesh.geometry.attributes.position;
+                for (let i = 0; i < positions.count; i++) {
+                    let y = positions.getY(i);
+                    const data = sys.data[i];
+                    y += Math.sin(state.globalTime + data.offset) * 0.005 + data.y;
+                    if (y > 6) y = 0;
+                    positions.setY(i, y);
+                }
+                positions.needsUpdate = true;
+            });
+
+            updateWeatherParticles(delta);
+
+            if (skybox) {
+                skybox.position.copy(camera.position);
+            }
+
+            // Deep space elements follow camera
+            if (deepSpaceGroup) {
+                deepSpaceGroup.position.copy(camera.position);
+
+                // Unified rotation: Rotate the entire group so stars, nebula, and galaxies move together
+                deepSpaceGroup.rotation.y += delta * 0.005;
+
+                // Keep the galaxy core texture spinning for effect, but position remains locked
+                if (galaxyCore?.material) galaxyCore.material.rotation += delta * 0.25;
+            }
+
+            if (timeAdvanced || weatherChanged) {
+                updateEnvironmentFromSettings();
+                updateStatusHud(true, delta);
+            } else {
+                updateStatusHud(false, delta);
+            }
+
+            updateCelestialSpritePositions();
+
+            if (state.isLocked) updateMovement(delta);
+
+            updateDirectionalLightTransform();
+
+            if (chatSprite?.visible) {
+                const bob = Math.sin(state.globalTime * 2) * 0.05;
+                chatSprite.position.copy(avatarSprite.position).add(CHAT_SPRITE_OFFSET);
+                chatSprite.position.y += (chatSprite.userData.height || 3.5) * 0.4 + bob;
+                chatSprite.lookAt(camera.position);
+            }
+            renderer.render(scene, camera);
+        }
+
+        function updateMovement(delta) {
+            const accel = 60 * runtimeSettings.movementSpeed;
+            const damping = 8;
+            state.velocity.x -= state.velocity.x * damping * delta;
+            state.velocity.z -= state.velocity.z * damping * delta;
+
+            const ix = Number(state.moveRight) - Number(state.moveLeft);
+            const iz = Number(state.moveBackward) - Number(state.moveForward);
+
+            let dx = 0;
+            let dz = 0;
+
+            if (ix !== 0 || iz !== 0) {
+                const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
+                const rgt = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
+                const move = new THREE.Vector3().addScaledVector(rgt, ix).addScaledVector(fwd, -iz).normalize();
+
+                // Apply acceleration to velocity
+                state.velocity.x += move.x * accel * delta;
+                state.velocity.z += move.z * accel * delta;
+            }
+
+            // Calculate next position based on velocity
+            let nextX = camera.position.x + state.velocity.x * delta;
+            let nextZ = camera.position.z + state.velocity.z * delta;
+
+            // Slope Check
+            const currentFloorY = getCollisionHeight(camera.position.x, camera.position.z, camera.position.y - PLAYER_EYE_HEIGHT);
+            const nextFloorY = getCollisionHeight(nextX, nextZ, camera.position.y - PLAYER_EYE_HEIGHT);
+
+            if (nextFloorY - currentFloorY > 1.0) {
+                // Too steep, stop movement
+                nextX = camera.position.x;
+                nextZ = camera.position.z;
+                state.velocity.x = 0;
+                state.velocity.z = 0;
+            }
+
+            // --- Tree Collision Check ---
+            for (const tree of treeColliders) {
+                const distSq = (nextX - tree.x) ** 2 + (nextZ - tree.z) ** 2;
+                const colDist = tree.r + PLAYER_RADIUS;
+
+                if (distSq < colDist * colDist) {
+                    const dist = Math.sqrt(distSq);
+                    const overlap = colDist - dist;
+
+                    // Normal vector from tree to player
+                    const nx = (nextX - tree.x) / dist;
+                    const nz = (nextZ - tree.z) / dist;
+
+                    // Push player out of tree
+                    nextX += nx * overlap;
+                    nextZ += nz * overlap;
+
+                    // Friction/Slide: Kill velocity pushing INTO the tree
+                    const vDotN = state.velocity.x * nx + state.velocity.z * nz;
+                    if (vDotN < 0) {
+                        state.velocity.x -= nx * vDotN;
+                        state.velocity.z -= nz * vDotN;
+                    }
+                }
+            }
+
+            // --- Bridge Railing Collision Check ---
+            const bridgeSurface = getBridgeSurface(nextX, nextZ);
+            if (bridgeSurface) {
+                // Bridge width is 4, half-width is 2.
+                // Railing offset is width/2 - 0.2 = 1.8.
+                // We subtract player radius (0.5) to keep player's center away from railing.
+                const railingLimit = (BRIDGE_HALF_WIDTH - 0.2) - PLAYER_RADIUS;
+
+                // Only check railing if we are actually ON the bridge height-wise
+                if (Math.abs((camera.position.y - PLAYER_EYE_HEIGHT) - bridgeSurface.height) < BRIDGE_STEP_TOLERANCE) {
+                    if (nextX > railingLimit) {
+                        nextX = railingLimit;
+                        state.velocity.x = 0; // Stop velocity into wall
+                    } else if (nextX < -railingLimit) {
+                        nextX = -railingLimit;
+                        state.velocity.x = 0; // Stop velocity into wall
+                    }
+                }
+            }
+
+            state.velocity.y -= GRAVITY * delta;
+            if (state.jump && state.isGrounded) { state.velocity.y = JUMP_FORCE; state.isGrounded = false; }
+
+            camera.position.x = nextX;
+            camera.position.z = nextZ;
+            camera.position.y += state.velocity.y * delta;
+
+            const floorY = getCollisionHeight(camera.position.x, camera.position.z, camera.position.y - PLAYER_EYE_HEIGHT);
+
+            if (camera.position.y < floorY + PLAYER_EYE_HEIGHT) {
+                camera.position.y = floorY + PLAYER_EYE_HEIGHT;
+                state.velocity.y = Math.max(0, state.velocity.y);
+                state.isGrounded = true;
+            } else state.isGrounded = false;
+        }
+    </script>
+</body>
+
+</html>
