@@ -1,3 +1,5 @@
+import { getContext } from '/scripts/extensions.js';
+
 const STREAM_START_KEYS = [
     'GENERATION_STARTED',
     'GENERATION_REQUESTED',
@@ -52,41 +54,127 @@ const CHAT_CHANGED_KEYS = [
     { match: /CHAT_(CHANGED|LOADED|SELECTED)/i },
 ];
 
+const MESSAGE_SENT_KEYS = [
+    'MESSAGE_SENT',
+    { match: /MESSAGE_SENT/i },
+];
+
+const MESSAGE_RECEIVED_KEYS = [
+    'MESSAGE_RECEIVED',
+    'CHARACTER_MESSAGE_RENDERED',
+    { match: /MESSAGE_(RECEIVED|RENDERED)/i },
+];
+
+const DEFAULT_HISTORY_BUDGET = 1024;
+
+function getHistorySource() {
+    return getContext();
+}
+
+function getTokenCounter() {
+    const ctx = getHistorySource();
+    return typeof ctx?.getTokenCountAsync === 'function' ? ctx.getTokenCountAsync : null;
+}
+
+function normalizeHistoryEntry(message, ctx = getHistorySource()) {
+    if (!message || typeof message !== 'object') return null;
+
+    const text = typeof message.mes === 'string'
+        ? message.mes.trim()
+        : (typeof message.content === 'string' ? message.content.trim() : '');
+
+    if (!text) return null;
+
+    let role = 'assistant';
+    if (message.is_system) {
+        role = 'system';
+    } else if (message.is_user) {
+        role = 'user';
+    }
+
+    const charId = ctx?.characterId;
+    const characters = ctx?.characters;
+    const character = (charId !== undefined && Array.isArray(characters)) ? characters[charId] : null;
+
+    let name = message.name;
+    let avatar = message.force_avatar;
+
+    if (!message.is_user && character) {
+        name = name || character.name;
+        avatar = avatar || character.avatar;
+    }
+
+    const attachments = Array.isArray(message.extra?.file)
+        ? message.extra.file
+        : message.extra?.file
+            ? [message.extra.file]
+            : [];
+
+    const authorId = message.userId ?? message.authorId ?? message.extra?.userId ?? message.extra?.authorId ?? null;
+    const timestamp = message.send_date ?? null;
+    const signature = `${message.mesId ?? message.id ?? message.key ?? ''}:${text}:${role}`;
+
+    const isAssistant = role === 'assistant';
+
+    return { text, signature, role, isAssistant, name, avatar, attachments, authorId, timestamp };
+}
+
+async function buildHistorySnapshot({ limitMessages = null, tokenBudget = null, includeSystem = true } = {}) {
+    const ctx = getHistorySource();
+    const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+
+    const maxMessages = Number.isFinite(limitMessages) ? limitMessages : chat.length;
+    const maxTokens = Number.isFinite(tokenBudget) && tokenBudget > 0
+        ? tokenBudget
+        : (Number(ctx?.maxContext) || DEFAULT_HISTORY_BUDGET);
+
+    const collected = [];
+    let usedTokens = 0;
+
+    for (let index = chat.length - 1; index >= 0 && collected.length < maxMessages; index--) {
+        const normalized = normalizeHistoryEntry(chat[index], ctx);
+
+        if (!normalized) continue;
+        if (!includeSystem && normalized.role === 'system') continue;
+
+        const counter = getTokenCounter();
+        const tokens = counter ? await counter(normalized.text) : 0;
+        if (usedTokens + tokens > maxTokens) break;
+
+        usedTokens += tokens;
+        collected.push(normalized);
+    }
+
+    collected.reverse();
+    const signature = collected.at(-1)?.signature ?? null;
+
+    return { history: collected, signature };
+}
+
 function resolveEventIdentifiers(eventTypes, candidates) {
     const results = new Set();
     const source = typeof eventTypes === 'object' && eventTypes !== null ? eventTypes : null;
 
+    // Helper to flatten nested event type structures into a list of { key, path, value }
     const flattenEventTypeEntries = (value) => {
         const entries = [];
         const visited = new WeakSet();
 
         const normalizePathPart = (part) => {
-            if (typeof part === 'symbol') {
-                return part.description || part.toString();
-            }
-            if (typeof part === 'string') {
-                return part;
-            }
-            if (Number.isFinite(part)) {
-                return String(part);
-            }
+            if (typeof part === 'symbol') return part.description || part.toString();
+            if (typeof part === 'string') return part;
+            if (Number.isFinite(part)) return String(part);
             return part != null ? String(part) : '';
         };
 
         const pushEntry = (path, resolved) => {
-            if (resolved == null) {
-                return;
-            }
+            if (resolved == null) return;
 
             const type = typeof resolved;
-            if (type !== 'string' && type !== 'symbol') {
-                return;
-            }
+            if (type !== 'string' && type !== 'symbol') return;
 
             const normalizedValue = type === 'string' ? resolved.trim() : resolved;
-            if (type === 'string' && !normalizedValue) {
-                return;
-            }
+            if (type === 'string' && !normalizedValue) return;
 
             const normalizedPath = path.map(normalizePathPart).filter((part) => part !== '');
             if (!normalizedPath.length) {
@@ -96,58 +184,38 @@ function resolveEventIdentifiers(eventTypes, candidates) {
 
             const keyName = normalizedPath[normalizedPath.length - 1];
             const pathString = normalizedPath.join('.');
-            if (keyName) {
-                entries.push({ key: keyName, path: pathString, value: normalizedValue });
-            }
-            if (pathString && pathString !== keyName) {
-                entries.push({ key: pathString, path: pathString, value: normalizedValue });
-            }
+            if (keyName) entries.push({ key: keyName, path: pathString, value: normalizedValue });
+            if (pathString && pathString !== keyName) entries.push({ key: pathString, path: pathString, value: normalizedValue });
         };
 
         const visit = (current, path = []) => {
-            if (current == null) {
-                return;
-            }
+            if (current == null) return;
             if (typeof current === 'string' || typeof current === 'symbol') {
                 pushEntry(path, current);
                 return;
             }
-            if (typeof current !== 'object') {
-                return;
-            }
-            if (visited.has(current)) {
-                return;
-            }
+            if (typeof current !== 'object') return;
+            if (visited.has(current)) return;
             visited.add(current);
 
             if (current instanceof Map) {
-                current.forEach((child, key) => {
-                    visit(child, [...path, key]);
-                });
+                current.forEach((child, key) => visit(child, [...path, key]));
                 return;
             }
 
             if (Array.isArray(current)) {
-                current.forEach((child, index) => {
-                    visit(child, [...path, index]);
-                });
+                current.forEach((child, index) => visit(child, [...path, index]));
                 return;
             }
 
             Reflect.ownKeys(current).forEach((key) => {
                 let child;
-                try {
-                    child = current[key];
-                } catch (error) {
-                    return;
-                }
-
+                try { child = current[key]; } catch (error) { return; }
                 const nextPath = [...path, key];
                 if (typeof child === 'string' || typeof child === 'symbol') {
                     pushEntry(nextPath, child);
                     return;
                 }
-
                 visit(child, nextPath);
             });
         };
@@ -165,50 +233,41 @@ function resolveEventIdentifiers(eventTypes, candidates) {
         }
         if (typeof name === 'string') {
             const trimmed = name.trim();
-            if (trimmed) {
-                results.add(trimmed);
-            }
+            if (trimmed) results.add(trimmed);
         }
     };
 
     const applyFallback = (fallback) => {
-        if (!fallback) {
-            return;
-        }
-        if (Array.isArray(fallback)) {
-            fallback.forEach(addName);
-        } else {
-            addName(fallback);
-        }
+        if (!fallback) return;
+        if (Array.isArray(fallback)) fallback.forEach(addName);
+        else addName(fallback);
     };
 
     const findEntryByKey = (key) => {
-        if (!entries.length) {
-            return null;
-        }
+        if (!entries.length) return null;
         const target = String(key).trim();
-        if (!target) {
-            return null;
-        }
+        if (!target) return null;
+
+        // Exact match first
         const direct = entries.find((entry) => String(entry.key) === target);
-        if (direct) {
-            return direct.value;
-        }
+        if (direct) return direct.value;
+
+        // Case-insensitive match
         const lowerTarget = target.toLowerCase();
         const match = entries.find((entry) => String(entry.key).toLowerCase() === lowerTarget);
         return match ? match.value : null;
     };
 
     const matchEntries = (pattern) => {
-        if (!entries.length) {
-            return false;
-        }
+        if (!entries.length) return false;
         const regex = pattern instanceof RegExp ? pattern : new RegExp(String(pattern), 'i');
         let matched = false;
         entries.forEach((entry) => {
             const candidateValue = typeof entry.value === 'symbol'
                 ? (entry.value.description || entry.value.toString())
                 : String(entry.value);
+
+            // Match against key, path, or value
             if (regex.test(String(entry.key)) || (entry.path && regex.test(String(entry.path))) || regex.test(candidateValue)) {
                 addName(entry.value);
                 matched = true;
@@ -218,40 +277,41 @@ function resolveEventIdentifiers(eventTypes, candidates) {
     };
 
     candidates.forEach((candidate) => {
-        if (!candidate) {
-            return;
-        }
+        if (!candidate) return;
+
+        // String candidate: try to find by key, then by value, then regex match
         if (typeof candidate === 'string') {
             const key = candidate.trim();
-            if (!key) {
-                return;
-            }
+            if (!key) return;
+
             const mapped = findEntryByKey(key);
             if (mapped) {
                 addName(mapped);
-                if (mapped !== key && key.includes('.')) {
-                    addName(key);
-                }
+                if (mapped !== key && key.includes('.')) addName(key);
                 return;
             }
+
             const mappedValue = source ? source[key] : null;
             if (typeof mappedValue === 'string' && mappedValue.trim()) {
                 addName(mappedValue);
                 return;
             }
+
             matchEntries(key);
             return;
         }
+
+        // Symbol candidate: add directly
         if (typeof candidate === 'symbol') {
             addName(candidate);
             return;
         }
+
+        // Object candidate with match pattern
         if (candidate && typeof candidate === 'object' && candidate.match) {
             const { match, fallback } = candidate;
             const matched = matchEntries(match);
-            if (!matched) {
-                applyFallback(fallback);
-            }
+            if (!matched) applyFallback(fallback);
         }
     });
 
@@ -307,6 +367,8 @@ export function registerSillyTavernIntegration({
     onStreamStarted = null,
     onStreamToken = null,
     onMessageFinished = null,
+    onMessageSent = null,
+    onMessageReceived = null,
     onChatChanged = null,
     onHistoryChanged = null,
 } = {}) {
@@ -320,6 +382,8 @@ export function registerSillyTavernIntegration({
     registerEventListeners(source, eventTypes, STREAM_START_KEYS, normalizeHandlers([onGenerationStarted, onStreamStarted]), registry);
     registerEventListeners(source, eventTypes, STREAM_TOKEN_KEYS, onStreamToken, registry);
     registerEventListeners(source, eventTypes, MESSAGE_FINISHED_KEYS, onMessageFinished, registry);
+    registerEventListeners(source, eventTypes, MESSAGE_SENT_KEYS, onMessageSent, registry);
+    registerEventListeners(source, eventTypes, MESSAGE_RECEIVED_KEYS, onMessageReceived, registry);
     registerEventListeners(source, eventTypes, CHAT_CHANGED_KEYS, onChatChanged, registry);
     registerEventListeners(source, eventTypes, HISTORY_UPDATE_KEYS, onHistoryChanged, registry);
 
@@ -349,3 +413,5 @@ export function unregisterSillyTavernIntegration(registered, { eventSource = nul
     });
     handlers.clear();
 }
+
+export { buildHistorySnapshot, normalizeHistoryEntry };

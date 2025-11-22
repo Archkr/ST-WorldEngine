@@ -3,7 +3,9 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    font-family: var(--mainFontFamily, sans-serif);
+    font-family: var(--font-primary, var(--mainFontFamily, sans-serif));
+    color: var(--text_body, #ccc);
+    line-height: 1.5;
 }
 
 .world-engine-window {
@@ -26,7 +28,7 @@
 }
 
 /* --- Iframe Wrapper --- */
-.world-engine-iframe-wrapper {
+.world-engine-iframe-wrapper { 
     flex: 1;
     border: 1px solid var(--border_color, #444);
     border-radius: 12px;
@@ -42,11 +44,57 @@
     display: none;
 }
 
-.world-engine-iframe {
+.world-engine-iframe { 
     width: 100%;
     height: 100%;
     border: none;
     display: block;
+}
+
+.world-engine-iframe-wrapper.has-error {
+    border-color: var(--smart-theme-color, #ff5d5d);
+}
+
+.world-engine-iframe-wrapper.has-error .world-engine-iframe {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.world-engine-iframe-error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 12px;
+    padding: 16px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 5;
+}
+
+.world-engine-iframe-error.is-hidden {
+    display: none;
+}
+
+.world-engine-retry-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: var(--smart-theme-color, #0078d7);
+    border: 1px solid transparent;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.world-engine-retry-button:hover {
+    opacity: 0.85;
 }
 
 /* --- Overlay Buttons (Glassmorphism) --- */
@@ -100,13 +148,13 @@
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    border-radius: 6px;
+    border-radius: var(--border-radius, 8px);
     cursor: pointer;
     background: var(--block-body, #2b2b2b);
     border: 1px solid var(--border_color, #555);
     color: var(--text_body, #eee);
     font-weight: 600;
-    transition: all 0.2s;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .world-engine-action-button:hover {
@@ -123,7 +171,7 @@
     padding: 16px;
     border: 1px solid var(--border_color, #444);
     border-radius: 12px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--block-body, rgba(0, 0, 0, 0.2));
 }
 
 .world-engine-setting-card {
@@ -131,14 +179,16 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    background: var(--block-body, #222);
-    border-radius: 8px;
-    border: 1px solid transparent;
-    transition: border-color 0.2s;
+    background: var(--bg-3, var(--block-body, #222));
+    border-radius: 10px;
+    border: 1px solid var(--border_color, #444);
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .world-engine-setting-card:hover {
     border-color: var(--border_color, #555);
+    background: var(--bg-2, #1a1a1a);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .world-engine-setting-header {
@@ -152,6 +202,12 @@
     font-weight: 600;
     color: var(--text_body, #ddd);
     font-size: 0.95em;
+}
+
+.world-engine-setting-value {
+    font-weight: 600;
+    color: var(--text_head, #fff);
+    font-variant-numeric: tabular-nums;
 }
 
 /* --- Custom Range Slider --- */
@@ -192,6 +248,17 @@ input[type=range].world-engine-slider::-webkit-slider-thumb:hover {
     transform: scale(1.2);
 }
 
+.world-engine-select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border_color, #555);
+    background: var(--block-body, #111);
+    color: var(--text_body, #eee);
+    font-family: inherit;
+    font-size: 0.95em;
+}
+
 /* --- Custom Toggle Switch --- */
 .world-engine-toggle {
     display: flex;
@@ -199,6 +266,10 @@ input[type=range].world-engine-slider::-webkit-slider-thumb:hover {
     justify-content: space-between;
     cursor: pointer;
     width: 100%;
+}
+
+.world-engine-toggle + .world-engine-toggle {
+    margin-top: 6px;
 }
 
 .world-engine-toggle input {
